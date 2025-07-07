@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NST Travels - Cab Booking</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0; padding: 0;
+      background: #f4f6f9;
+      color: #333;
+    }
+    header {
+      background: #4b2aad;
+      color: white;
+      padding: 15px 20px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+    }
+    .container {
+      max-width: 900px;
+      margin: 30px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    }
+    h2 { color: #4b2aad; margin-top: 0; }
+    label { font-weight: 600; display: block; margin-top: 15px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-top: 5px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: #4b2aad;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #3a208f;
+    }
+    .two-col { display: flex; gap: 20px; }
+    .two-col > div { flex: 1; }
+    .admin-panel {
+      display: none;
+      margin-top: 30px;
+    }
+    .login-box {
+      max-width: 400px;
+      margin: 60px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .hidden { display: none; }
+    .top-right {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+    }
+    .top-right button {
+      background: white;
+      color: #4b2aad;
+      border: 2px solid #4b2aad;
+    }
+    .summary {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f0f0ff;
+      border: 1px dashed #4b2aad;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+    .actions button {
+      background: #4b2aad;
+      color: white;
+      padding: 6px 12px;
+      margin-right: 5px;
+      border-radius: 5px;
+    }
+    .whatsapp {
+      background: #25D366;
+    }
+    .export {
+      background: #2c2c2c;
+    }
+    .logout {
+      background: red;
+    }
+    @media(max-width: 600px) {
+      .two-col { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    NST Travels - Cab Booking
+    <div class="top-right">
+      <button onclick="showLogin()">Admin Login</button>
+    </div>
+  </header>
+
+  <div id="loginSection" class="login-box hidden">
+    <h2>Admin Login</h2>
+    <label for="adminUser">Username</label>
+    <input type="text" id="adminUser" placeholder="Enter username" />
+    <label for="adminPass">Password</label>
+    <input type="password" id="adminPass" placeholder="Enter password" />
+    <button onclick="checkLogin()">Login</button>
+  </div>
+
+  <div class="container" id="mainSection">
+    <h2>Book a Cab</h2>
+    <div class="two-col">
+      <div>
+        <label for="pickup">Pickup Location</label>
+        <input type="text" id="pickup" />
+        <label for="drop">Drop Location</label>
+        <input type="text" id="drop" />
+        <label for="date">Pickup Date</label>
+        <input type="date" id="date" />
+        <label for="time">Pickup Time</label>
+        <input type="time" id="time" />
+      </div>
+      <div>
+        <label for="vehicle">Vehicle Type</label>
+        <select id="vehicle">
+          <option value="Innova Crysta">Innova Crysta</option>
+          <option value="Innova Hycross">Innova Hycross</option>
+          <option value="Force Urbania">Force Urbania</option>
+        </select>
+        <label for="name">Customer Name</label>
+        <input type="text" id="name" />
+        <label for="phone">Phone Number</label>
+        <input type="tel" id="phone" />
+        <label for="remarks">Remarks</label>
+        <textarea id="remarks" rows="3"></textarea>
+      </div>
+    </div>
+    <button onclick="submitBooking()">Book Now</button>
+    <div class="summary" id="summaryBox" style="display:none;"></div>
+  </div>
+  <!-- CONTINUED FROM PART 1 -->
+  <div class="container admin-panel" id="adminPanel">
+    <h2>📂 Booking Management</h2>
+    <table id="bookingTable">
+      <thead>
+        <tr>
+          <th>ID</th><th>Name</th><th>Phone</th><th>Vehicle</th><th>Date</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button class="export" onclick="exportPDF()">Export PDF</button>
+    <button class="logout" onclick="logout()">Logout</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const mainSection = document.getElementById("mainSection");
+    const loginSection = document.getElementById("loginSection");
+    const adminPanel = document.getElementById("adminPanel");
+    const bookingTable = document.querySelector("#bookingTable tbody");
+
+    const adminUser = "admin";
+    const adminPass = "1234";
+
+    let bookingIdCounter = 1;
+
+    function showLogin() {
+      loginSection.classList.remove("hidden");
+      mainSection.classList.add("hidden");
+      adminPanel.style.display = "none";
+    }
+
+    function checkLogin() {
+      const user = document.getElementById("adminUser").value;
+      const pass = document.getElementById("adminPass").value;
+      if (user === adminUser && pass === adminPass) {
+        loginSection.classList.add("hidden");
+        adminPanel.style.display = "block";
+        loadBookings();
+      } else {
+        alert("Invalid credentials!");
+      }
+    }
+
+    function logout() {
+      adminPanel.style.display = "none";
+      mainSection.classList.remove("hidden");
+    }
+
+    function submitBooking() {
+      const pickup = document.getElementById("pickup").value;
+      const drop = document.getElementById("drop").value;
+      const date = document.getElementById("date").value;
+      const time = document.getElementById("time").value;
+      const vehicle = document.getElementById("vehicle").value;
+      const name = document.getElementById("name").value;
+      const phone = document.getElementById("phone").value;
+      const remarks = document.getElementById("remarks").value;
+
+      if (!pickup || !drop || !date || !time || !vehicle || !name || !phone) {
+        alert("Please fill all required fields.");
+        return;
+      }
+
+      const id = generateBookingId();
+      const booking = { id, pickup, drop, date, time, vehicle, name, phone, remarks };
+
+      saveBooking(booking);
+      showSummary(booking);
+    }
+
+    function generateBookingId() {
+      let bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      let max = 0;
+      bookings.forEach(b => {
+        const num = parseInt(b.id.replace("NSTB", ""));
+        if (num > max) max = num;
+      });
+      return "NSTB" + String(max + 1).padStart(3, "0");
+    }
+
+    function saveBooking(data) {
+      let bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      bookings.push(data);
+      localStorage.setItem("bookings", JSON.stringify(bookings));
+    }
+
+    function showSummary(b) {
+      const box = document.getElementById("summaryBox");
+      box.innerHTML = `
+        <strong>Booking Confirmed! ✅</strong><br/>
+        Booking ID: <b>${b.id}</b><br/>
+        Name: ${b.name}<br/>
+        Phone: ${b.phone}<br/>
+        Vehicle: ${b.vehicle}<br/>
+        From: ${b.pickup} → ${b.drop}<br/>
+        Date & Time: ${b.date} @ ${b.time}<br/>
+        Remarks: ${b.remarks || '—'}<br/><br/>
+        <button class="whatsapp" onclick='shareWhatsApp(${JSON.stringify(b)})'>📤 Share via WhatsApp</button>
+      `;
+      box.style.display = "block";
+    }
+
+    function shareWhatsApp(b) {
+      const msg = `🚖 *NST Travels - Booking Confirmation* 🚖
+
+*Booking ID:* ${b.id}
+*Customer:* ${b.name}
+*Phone:* ${b.phone}
+*Vehicle:* ${b.vehicle}
+*From:* ${b.pickup} ➡️ ${b.drop}
+*Date & Time:* ${b.date} at ${b.time}
+*Remarks:* ${b.remarks || '—'}
+
+Thank you for choosing NST Travels! 🙏`;
+      const encoded = encodeURIComponent(msg);
+      window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    }
+
+    function loadBookings() {
+      bookingTable.innerHTML = "";
+      let bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      bookings.forEach((b, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${b.id}</td>
+          <td>${b.name}</td>
+          <td>${b.phone}</td>
+          <td>${b.vehicle}</td>
+          <td>${b.date}</td>
+          <td class="actions">
+            <button onclick='editBooking(${i})'>Edit</button>
+            <button onclick='deleteBooking(${i})'>Delete</button>
+          </td>
+        `;
+        bookingTable.appendChild(row);
+      });
+    }
+
+    function editBooking(i) {
+      const bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      const b = bookings[i];
+      document.getElementById("pickup").value = b.pickup;
+      document.getElementById("drop").value = b.drop;
+      document.getElementById("date").value = b.date;
+      document.getElementById("time").value = b.time;
+      document.getElementById("vehicle").value = b.vehicle;
+      document.getElementById("name").value = b.name;
+      document.getElementById("phone").value = b.phone;
+      document.getElementById("remarks").value = b.remarks;
+      bookings.splice(i, 1); // remove to replace after resave
+      localStorage.setItem("bookings", JSON.stringify(bookings));
+      adminPanel.style.display = "none";
+      mainSection.classList.remove("hidden");
+      window.scrollTo(0, 0);
+    }
+
+    function deleteBooking(i) {
+      if (!confirm("Delete this booking?")) return;
+      const bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      bookings.splice(i, 1);
+      localStorage.setItem("bookings", JSON.stringify(bookings));
+      loadBookings();
+    }
+
+    async function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFont("helvetica", "bold");
+      doc.text("NST Travels - Booking Report", 10, 10);
+      doc.setFont("helvetica", "normal");
+      let y = 20;
+      const bookings = JSON.parse(localStorage.getItem("bookings") || "[]");
+      bookings.forEach((b, i) => {
+        doc.text(`${i + 1}. ${b.id} | ${b.name} | ${b.vehicle} | ${b.date}`, 10, y);
+        y += 8;
+        if (y > 270) {
+          doc.addPage();
+          y = 10;
+        }
+      });
+      doc.save("NST_Travels_Bookings.pdf");
+    }
+  </script>
+</body>
+</html>
