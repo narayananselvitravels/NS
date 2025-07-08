@@ -1,1109 +1,282 @@
-"use client";
-import React from "react";
-
-function MainComponent() {
-  const [currentView, setCurrentView] = React.useState("home");
-  const [bookings, setBookings] = React.useState([]);
-  const [vehicles, setVehicles] = React.useState([]);
-  const [isAdmin, setIsAdmin] = React.useState(false);
-  const [adminPassword, setAdminPassword] = React.useState("");
-  const [toast, setToast] = React.useState({
-    show: false,
-    message: "",
-    type: "",
-  });
-  const [loading, setLoading] = React.useState(false);
-
-  const [bookingForm, setBookingForm] = React.useState({
-    booking_type: "local",
-    pickup_location: "",
-    drop_location: "",
-    pickup_date: "",
-    pickup_time: "",
-    vehicle_id: 1,
-    hours: 4,
-    days: 1,
-    extra_km: 0,
-    extra_hours: 0,
-    toll_charges: 0,
-    parking_charges: 0,
-    customer_name: "",
-    customer_phone: "",
-    customer_email: "",
-  });
-
-  React.useEffect(() => {
-    loadVehicles();
-    loadBookings();
-  }, []);
-
-  const loadVehicles = async () => {
-    try {
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get_vehicles" }),
-      });
-      const data = await response.json();
-      if (data.vehicles) {
-        setVehicles(data.vehicles);
-        if (data.vehicles.length > 0) {
-          setBookingForm((prev) => ({
-            ...prev,
-            vehicle_id: data.vehicles[0].id,
-          }));
-        }
-      }
-    } catch (error) {
-      showToast("Failed to load vehicles", "error");
-    }
-  };
-
-  const loadBookings = async () => {
-    try {
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_bookings", limit: 100 }),
-      });
-      const data = await response.json();
-      if (data.bookings) {
-        setBookings(data.bookings);
-      }
-    } catch (error) {
-      showToast("Failed to load bookings", "error");
-    }
-  };
-
-  const showToast = (message, type = "success") => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: "", type: "" }), 3000);
-  };
-
-  const calculateFare = () => {
-    const vehicle = vehicles.find((v) => v.id === bookingForm.vehicle_id);
-    if (!vehicle) return 0;
-
-    let baseAmount = 0;
-
-    switch (bookingForm.booking_type) {
-      case "local":
-        baseAmount = vehicle.base_price * 80;
-        break;
-      case "outstation":
-        baseAmount = vehicle.base_price * 300 * bookingForm.days;
-        break;
-      case "hourly":
-        baseAmount = vehicle.hourly_rate * bookingForm.hours;
-        break;
-      case "airport":
-        baseAmount = vehicle.base_price * 50;
-        break;
-      default:
-        baseAmount = 0;
-    }
-
-    const extraKmAmount = bookingForm.extra_km * vehicle.base_price;
-    const extraHourAmount = bookingForm.extra_hours * vehicle.hourly_rate;
-
-    return (
-      baseAmount +
-      extraKmAmount +
-      extraHourAmount +
-      bookingForm.toll_charges +
-      bookingForm.parking_charges
-    );
-  };
-
-  const handleBookingSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    if (
-      !bookingForm.pickup_location ||
-      !bookingForm.drop_location ||
-      !bookingForm.pickup_date ||
-      !bookingForm.pickup_time ||
-      !bookingForm.customer_name ||
-      !bookingForm.customer_phone
-    ) {
-      showToast("Please fill all required fields", "error");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const vehicle = vehicles.find((v) => v.id === bookingForm.vehicle_id);
-      const totalFare = calculateFare();
-
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_booking",
-          ...bookingForm,
-          vehicle_name: vehicle.name,
-          total_fare: totalFare,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        showToast(`Booking confirmed! Trip ID: ${data.booking.trip_id}`);
-        setCurrentView("summary");
-        await loadBookings();
-
-        // Reset form
-        setBookingForm({
-          booking_type: "local",
-          pickup_location: "",
-          drop_location: "",
-          pickup_date: "",
-          pickup_time: "",
-          vehicle_id: vehicles[0]?.id || 1,
-          hours: 4,
-          days: 1,
-          extra_km: 0,
-          extra_hours: 0,
-          toll_charges: 0,
-          parking_charges: 0,
-          customer_name: "",
-          customer_phone: "",
-          customer_email: "",
-        });
-      } else {
-        showToast(data.error || "Failed to create booking", "error");
-      }
-    } catch (error) {
-      showToast("Failed to create booking", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const exportToPDF = (booking) => {
-    showToast("PDF export feature would be implemented with a PDF library");
-  };
-
-  const shareOnWhatsApp = (booking) => {
-    const message = `NST Travels Booking Confirmed!\nTrip ID: ${booking.trip_id}\nFrom: ${booking.pickup_location}\nTo: ${booking.drop_location}\nDate: ${booking.pickup_date}\nTime: ${booking.pickup_time}\nVehicle: ${booking.vehicle_name}\nFare: ₹${booking.total_fare}`;
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
-  };
-
-  const adminLogin = () => {
-    if (adminPassword === "nst123") {
-      setIsAdmin(true);
-      setCurrentView("admin");
-      showToast("Admin login successful");
-    } else {
-      showToast("Invalid password", "error");
-    }
-  };
-
-  const updateBookingStatus = async (bookingId, status) => {
-    try {
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_booking",
-          id: bookingId,
-          status,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        showToast("Booking status updated");
-        await loadBookings();
-      } else {
-        showToast(data.error || "Failed to update status", "error");
-      }
-    } catch (error) {
-      showToast("Failed to update status", "error");
-    }
-  };
-
-  const assignDriver = async (bookingId, driverName, driverPhone) => {
-    try {
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "assign_driver",
-          booking_id: bookingId,
-          driver_name: driverName,
-          driver_phone: driverPhone,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        showToast("Driver assigned successfully");
-        await loadBookings();
-      } else {
-        showToast(data.error || "Failed to assign driver", "error");
-      }
-    } catch (error) {
-      showToast("Failed to assign driver", "error");
-    }
-  };
-
-  const updateVehiclePrice = async (vehicleId, field, value) => {
-    try {
-      const response = await fetch("/api/db-bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_vehicle",
-          id: vehicleId,
-          [field]: parseFloat(value),
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        showToast("Vehicle pricing updated");
-        await loadVehicles();
-      } else {
-        showToast(data.error || "Failed to update pricing", "error");
-      }
-    } catch (error) {
-      showToast("Failed to update pricing", "error");
-    }
-  };
-
-  const getBookingStats = () => {
-    const total = bookings.length;
-    const confirmed = bookings.filter((b) => b.status === "confirmed").length;
-    const completed = bookings.filter((b) => b.status === "completed").length;
-    const cancelled = bookings.filter((b) => b.status === "cancelled").length;
-    const totalRevenue = bookings
-      .filter((b) => b.status === "completed")
-      .reduce((sum, b) => sum + parseFloat(b.total_fare || 0), 0);
-
-    return { total, confirmed, completed, cancelled, totalRevenue };
-  };
-
-  const renderHome = () => (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-      <header className="bg-[#4b2aad] text-white p-4 shadow-lg">
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <i className="fas fa-taxi text-2xl"></i>
-            <h1 className="text-2xl font-bold font-poppins">NST Travels</h1>
-          </div>
-          <button
-            onClick={() => setCurrentView("admin-login")}
-            className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors"
-          >
-            <i className="fas fa-user-shield mr-2"></i>Admin
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-4">
-        <div className="text-center mb-8 mt-8">
-          <h2 className="text-4xl font-bold text-gray-800 mb-4 font-poppins">
-            Book Your Ride
-          </h2>
-          <p className="text-gray-600 text-lg">
-            Comfortable, Safe & Reliable Cab Service
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            {
-              type: "local",
-              icon: "fas fa-map-marker-alt",
-              title: "Local",
-              desc: "City rides",
-            },
-            {
-              type: "outstation",
-              icon: "fas fa-route",
-              title: "Outstation",
-              desc: "Intercity travel",
-            },
-            {
-              type: "hourly",
-              icon: "fas fa-clock",
-              title: "Hourly",
-              desc: "Rent by hour",
-            },
-            {
-              type: "airport",
-              icon: "fas fa-plane",
-              title: "Airport",
-              desc: "Airport transfer",
-            },
-          ].map((service) => (
-            <button
-              key={service.type}
-              onClick={() =>
-                setBookingForm((prev) => ({
-                  ...prev,
-                  booking_type: service.type,
-                }))
-              }
-              className={`p-6 rounded-xl border-2 transition-all ${
-                bookingForm.booking_type === service.type
-                  ? "border-[#4b2aad] bg-purple-50"
-                  : "border-gray-200 hover:border-purple-300"
-              }`}
-            >
-              <i className={`${service.icon} text-3xl text-[#4b2aad] mb-3`}></i>
-              <h3 className="font-semibold text-gray-800 font-poppins">
-                {service.title}
-              </h3>
-              <p className="text-sm text-gray-600">{service.desc}</p>
-            </button>
-          ))}
-        </div>
-
-        <form
-          onSubmit={handleBookingSubmit}
-          className="bg-white rounded-2xl shadow-xl p-6 md:p-8"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                <i className="fas fa-map-marker-alt text-green-500 mr-2"></i>
-                Pickup Location *
-              </label>
-              <input
-                type="text"
-                name="pickup_location"
-                value={bookingForm.pickup_location}
-                onChange={(e) =>
-                  setBookingForm((prev) => ({
-                    ...prev,
-                    pickup_location: e.target.value,
-                  }))
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                placeholder="Enter pickup location"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                <i className="fas fa-map-marker-alt text-red-500 mr-2"></i>Drop
-                Location *
-              </label>
-              <input
-                type="text"
-                name="drop_location"
-                value={bookingForm.drop_location}
-                onChange={(e) =>
-                  setBookingForm((prev) => ({
-                    ...prev,
-                    drop_location: e.target.value,
-                  }))
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                placeholder="Enter drop location"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                <i className="fas fa-calendar text-[#4b2aad] mr-2"></i>Date *
-              </label>
-              <input
-                type="date"
-                name="pickup_date"
-                value={bookingForm.pickup_date}
-                onChange={(e) =>
-                  setBookingForm((prev) => ({
-                    ...prev,
-                    pickup_date: e.target.value,
-                  }))
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                <i className="fas fa-clock text-[#4b2aad] mr-2"></i>Time *
-              </label>
-              <input
-                type="time"
-                name="pickup_time"
-                value={bookingForm.pickup_time}
-                onChange={(e) =>
-                  setBookingForm((prev) => ({
-                    ...prev,
-                    pickup_time: e.target.value,
-                  }))
-                }
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                required
-              />
-            </div>
-
-            {bookingForm.booking_type === "hourly" && (
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                  Hours
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={bookingForm.hours}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      hours: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                />
-              </div>
-            )}
-
-            {bookingForm.booking_type === "outstation" && (
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2 font-poppins">
-                  Days
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={bookingForm.days}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      days: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="mt-8">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-              Select Vehicle
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {vehicles.map((vehicle) => (
-                <button
-                  key={vehicle.id}
-                  type="button"
-                  onClick={() =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      vehicle_id: vehicle.id,
-                    }))
-                  }
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    bookingForm.vehicle_id === vehicle.id
-                      ? "border-[#4b2aad] bg-purple-50"
-                      : "border-gray-200 hover:border-purple-300"
-                  }`}
-                >
-                  <img
-                    src={vehicle.image}
-                    alt={vehicle.name}
-                    className="w-full h-32 object-cover rounded-lg mb-3"
-                  />
-                  <h4 className="font-semibold text-gray-800 font-poppins">
-                    {vehicle.name}
-                  </h4>
-                  <p className="text-sm text-gray-600">
-                    ₹{vehicle.base_price}/km
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    ₹{vehicle.hourly_rate}/hour
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-                Customer Details
-              </h3>
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  name="customer_name"
-                  value={bookingForm.customer_name}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      customer_name: e.target.value,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Full Name *"
-                  required
-                />
-                <input
-                  type="tel"
-                  name="customer_phone"
-                  value={bookingForm.customer_phone}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      customer_phone: e.target.value,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Phone Number *"
-                  required
-                />
-                <input
-                  type="email"
-                  name="customer_email"
-                  value={bookingForm.customer_email}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      customer_email: e.target.value,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Email Address"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-                Additional Charges
-              </h3>
-              <div className="space-y-4">
-                <input
-                  type="number"
-                  min="0"
-                  value={bookingForm.extra_km}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      extra_km: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Extra KM"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  value={bookingForm.extra_hours}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      extra_hours: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Extra Hours"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  value={bookingForm.toll_charges}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      toll_charges: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Toll Charges"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  value={bookingForm.parking_charges}
-                  onChange={(e) =>
-                    setBookingForm((prev) => ({
-                      ...prev,
-                      parking_charges: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                  placeholder="Parking Charges"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 bg-gray-50 p-6 rounded-xl">
-            <div className="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
-              <span>Total Fare:</span>
-              <span>₹{calculateFare()}</span>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full mt-8 bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg font-poppins"
-          >
-            <i className="fas fa-check-circle mr-2"></i>Book Now
-          </button>
-        </form>
-      </main>
+"use client"; import React from "react"; function MainComponent() { const [currentView, setCurrentView] = React.useState("home"); const [bookings, setBookings] = React.useState([]); const [vehicles, setVehicles] = React.useState([]); const [isAdmin, setIsAdmin] = React.useState(false); const [adminPassword, setAdminPassword] = React.useState(""); const [toast, setToast] = React.useState({ show: false, message: "", type: "", }); const [loading, setLoading] = React.useState(false); const [bookingForm, setBookingForm] = React.useState({ booking_type: "local", pickup_location: "", drop_location: "", pickup_date: "", pickup_time: "", vehicle_id: 1, hours: 4, days: 1, extra_km: 0, extra_hours: 0, toll_charges: 0, parking_charges: 0, customer_name: "", customer_phone: "", customer_email: "", }); React.useEffect(() =&gt; { loadVehicles(); loadBookings(); }, []); const loadVehicles = async () =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "get_vehicles" }), }); const data = await response.json(); if (data.vehicles) { setVehicles(data.vehicles); if (data.vehicles.length &gt; 0) { setBookingForm((prev) =&gt; ({ ...prev, vehicle_id: data.vehicles[0].id, })); } } } catch (error) { showToast("Failed to load vehicles", "error"); } }; const loadBookings = async () =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list_bookings", limit: 100 }), }); const data = await response.json(); if (data.bookings) { setBookings(data.bookings); } } catch (error) { showToast("Failed to load bookings", "error"); } }; const showToast = (message, type = "success") =&gt; { setToast({ show: true, message, type }); setTimeout(() =&gt; setToast({ show: false, message: "", type: "" }), 3000); }; const calculateFare = () =&gt; { const vehicle = vehicles.find((v) =&gt; v.id === bookingForm.vehicle_id); if (!vehicle) return 0; let baseAmount = 0; switch (bookingForm.booking_type) { case "local": baseAmount = vehicle.base_price * 80; break; case "outstation": baseAmount = vehicle.base_price * 300 * bookingForm.days; break; case "hourly": baseAmount = vehicle.hourly_rate * bookingForm.hours; break; case "airport": baseAmount = vehicle.base_price * 50; break; default: baseAmount = 0; } const extraKmAmount = bookingForm.extra_km * vehicle.base_price; const extraHourAmount = bookingForm.extra_hours * vehicle.hourly_rate; return ( baseAmount + extraKmAmount + extraHourAmount + bookingForm.toll_charges + bookingForm.parking_charges ); }; const handleBookingSubmit = async (e) =&gt; { e.preventDefault(); setLoading(true); if ( !bookingForm.pickup_location || !bookingForm.drop_location || !bookingForm.pickup_date || !bookingForm.pickup_time || !bookingForm.customer_name || !bookingForm.customer_phone ) { showToast("Please fill all required fields", "error"); setLoading(false); return; } try { const vehicle = vehicles.find((v) =&gt; v.id === bookingForm.vehicle_id); const totalFare = calculateFare(); const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create_booking", ...bookingForm, vehicle_name: vehicle.name, total_fare: totalFare, }), }); const data = await response.json(); if (data.success) { showToast(`Booking confirmed! Trip ID: ${data.booking.trip_id}`); setCurrentView("summary"); await loadBookings(); // Reset form setBookingForm({ booking_type: "local", pickup_location: "", drop_location: "", pickup_date: "", pickup_time: "", vehicle_id: vehicles[0]?.id || 1, hours: 4, days: 1, extra_km: 0, extra_hours: 0, toll_charges: 0, parking_charges: 0, customer_name: "", customer_phone: "", customer_email: "", }); } else { showToast(data.error || "Failed to create booking", "error"); } } catch (error) { showToast("Failed to create booking", "error"); } finally { setLoading(false); } }; const exportToPDF = (booking) =&gt; { showToast("PDF export feature would be implemented with a PDF library"); }; const shareOnWhatsApp = (booking) =&gt; { const message = `NST Travels Booking Confirmed!\nTrip ID: ${booking.trip_id}\nFrom: ${booking.pickup_location}\nTo: ${booking.drop_location}\nDate: ${booking.pickup_date}\nTime: ${booking.pickup_time}\nVehicle: ${booking.vehicle_name}\nFare: ₹${booking.total_fare}`; const url = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(url, "_blank"); }; const adminLogin = () =&gt; { if (adminPassword === "nst123") { setIsAdmin(true); setCurrentView("admin"); showToast("Admin login successful"); } else { showToast("Invalid password", "error"); } }; const updateBookingStatus = async (bookingId, status) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_booking", id: bookingId, status, }), }); const data = await response.json(); if (data.success) { showToast("Booking status updated"); await loadBookings(); } else { showToast(data.error || "Failed to update status", "error"); } } catch (error) { showToast("Failed to update status", "error"); } }; const assignDriver = async (bookingId, driverName, driverPhone) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "assign_driver", booking_id: bookingId, driver_name: driverName, driver_phone: driverPhone, }), }); const data = await response.json(); if (data.success) { showToast("Driver assigned successfully"); await loadBookings(); } else { showToast(data.error || "Failed to assign driver", "error"); } } catch (error) { showToast("Failed to assign driver", "error"); } }; const updateVehiclePrice = async (vehicleId, field, value) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_vehicle", id: vehicleId, [field]: parseFloat(value), }), }); const data = await response.json(); if (data.success) { showToast("Vehicle pricing updated"); await loadVehicles(); } else { showToast(data.error || "Failed to update pricing", "error"); } } catch (error) { showToast("Failed to update pricing", "error"); } }; const getBookingStats = () =&gt; { const total = bookings.length; const confirmed = bookings.filter((b) =&gt; b.status === "confirmed").length; const completed = bookings.filter((b) =&gt; b.status === "completed").length; const cancelled = bookings.filter((b) =&gt; b.status === "cancelled").length; const totalRevenue = bookings .filter((b) =&gt; b.status === "completed") .reduce((sum, b) =&gt; sum + parseFloat(b.total_fare || 0), 0); return { total, confirmed, completed, cancelled, totalRevenue }; }; const renderHome = () =&gt; (
+<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
+  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
+    <div classname="max-w-6xl mx-auto flex justify-between items-center">
+      <div classname="flex items-center space-x-3">
+        <h1 classname="text-2xl font-bold font-poppins">NST Travels</h1>
+      </div><button onclick="{()">setCurrentView("admin-login")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Admin</button>
     </div>
-  );
-
-  const renderSummary = () => {
-    const latestBooking = bookings[0];
-    if (!latestBooking) return null;
-
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-        <header className="bg-[#4b2aad] text-white p-4 shadow-lg">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 className="text-2xl font-bold font-poppins">
-              Booking Confirmed
-            </h1>
-            <button
-              onClick={() => setCurrentView("home")}
-              className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors"
-            >
-              <i className="fas fa-home mr-2"></i>Home
-            </button>
-          </div>
-        </header>
-
-        <main className="max-w-4xl mx-auto p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-8 mt-8">
-            <div className="text-center mb-8">
-              <i className="fas fa-check-circle text-6xl text-green-500 mb-4"></i>
-              <h2 className="text-3xl font-bold text-gray-800 mb-2 font-poppins">
-                Booking Confirmed!
-              </h2>
-              <p className="text-xl text-[#4b2aad] font-bold">
-                {latestBooking.trip_id}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-                  Trip Details
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <i className="fas fa-map-marker-alt text-green-500 w-6"></i>
-                    <span className="ml-3">
-                      {latestBooking.pickup_location}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <i className="fas fa-map-marker-alt text-red-500 w-6"></i>
-                    <span className="ml-3">{latestBooking.drop_location}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <i className="fas fa-calendar text-[#4b2aad] w-6"></i>
-                    <span className="ml-3">{latestBooking.pickup_date}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <i className="fas fa-clock text-[#4b2aad] w-6"></i>
-                    <span className="ml-3">{latestBooking.pickup_time}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <i className="fas fa-car text-[#4b2aad] w-6"></i>
-                    <span className="ml-3">{latestBooking.vehicle_name}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-                  Customer Details
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <i className="fas fa-user text-[#4b2aad] w-6"></i>
-                    <span className="ml-3">{latestBooking.customer_name}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <i className="fas fa-phone text-[#4b2aad] w-6"></i>
-                    <span className="ml-3">{latestBooking.customer_phone}</span>
-                  </div>
-                  {latestBooking.customer_email && (
-                    <div className="flex items-center">
-                      <i className="fas fa-envelope text-[#4b2aad] w-6"></i>
-                      <span className="ml-3">
-                        {latestBooking.customer_email}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 bg-gray-50 p-6 rounded-xl">
-              <div className="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
-                <span>Total Fare:</span>
-                <span>₹{latestBooking.total_fare}</span>
-              </div>
-            </div>
-
-            <div className="mt-8 flex flex-col md:flex-row gap-4">
-              <button
-                onClick={() => exportToPDF(latestBooking)}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-              >
-                <i className="fas fa-file-pdf mr-2"></i>Export PDF
-              </button>
-              <button
-                onClick={() => shareOnWhatsApp(latestBooking)}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-              >
-                <i className="fab fa-whatsapp mr-2"></i>Share on WhatsApp
-              </button>
-            </div>
-          </div>
-        </main>
+  </header>
+  <main classname="max-w-6xl mx-auto p-4">
+    <div classname="text-center mb-8 mt-8">
+      <h2 classname="text-4xl font-bold text-gray-800 mb-4 font-poppins">Book Your Ride</h2>
+      <p classname="text-gray-600 text-lg">Comfortable, Safe & Reliable Cab Service</p>
+    </div>
+    <div classname="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {[ { type: "local", icon: "fas fa-map-marker-alt", title: "Local", desc: "City rides", }, { type: "outstation", icon: "fas fa-route", title: "Outstation", desc: "Intercity travel", }, { type: "hourly", icon: "fas fa-clock", title: "Hourly", desc: "Rent by hour", }, { type: "airport", icon: "fas fa-plane", title: "Airport", desc: "Airport transfer", }, ].map((service) =&gt; ( <button key="{service.type}" onclick="{()">setBookingForm((prev) =&gt; ({ ...prev, booking_type: service.type, })) } className={`p-6 rounded-xl border-2 transition-all ${ bookingForm.booking_type === service.type ? "border-[#4b2aad] bg-purple-50" : "border-gray-200 hover:border-purple-300" }`} &gt;</button>
+      <h3 classname="font-semibold text-gray-800 font-poppins"><button key="{service.type}" onclick="{()">{service.title}</button></h3>
+      <p classname="text-sm text-gray-600"><button key="{service.type}" onclick="{()">{service.desc}</button></p>))}
+    </div>
+    <form onsubmit="{handleBookingSubmit}" classname="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+      <div classname="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Pickup Location *</label> <input type="text" name="pickup_location" value="{bookingForm.pickup_location}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_location: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter pickup location" required /&gt;
+        </div>
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Drop Location *</label> <input type="text" name="drop_location" value="{bookingForm.drop_location}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, drop_location: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter drop location" required /&gt;
+        </div>
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Date *</label> <input type="date" name="pickup_date" value="{bookingForm.pickup_date}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_date: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" required /&gt;
+        </div>
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Time *</label> <input type="time" name="pickup_time" value="{bookingForm.pickup_time}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_time: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" required /&gt;
+        </div>{bookingForm.booking_type === "hourly" &amp;& (
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Hours</label> <input type="number" min="1" value="{bookingForm.hours}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, hours: parseInt(e.target.value), })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
+        </div>)} {bookingForm.booking_type === "outstation" &amp;& (
+        <div>
+          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Days</label> <input type="number" min="1" value="{bookingForm.days}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, days: parseInt(e.target.value), })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
+        </div>)}
       </div>
-    );
-  };
-
-  const renderAdminLogin = () => (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-white flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <i className="fas fa-user-shield text-6xl text-[#4b2aad] mb-4"></i>
-          <h2 className="text-2xl font-bold text-gray-800 font-poppins">
-            Admin Login
-          </h2>
+      <div classname="mt-8">
+        <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Select Vehicle</h3>
+        <div classname="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {vehicles.map((vehicle) =&gt; ( <button key="{vehicle.id}" type="button" onclick="{()">setBookingForm((prev) =&gt; ({ ...prev, vehicle_id: vehicle.id, })) } className={`p-4 rounded-xl border-2 transition-all ${ bookingForm.vehicle_id === vehicle.id ? "border-[#4b2aad] bg-purple-50" : "border-gray-200 hover:border-purple-300" }`} &gt; <img src="{vehicle.image}" alt="{vehicle.name}" classname="w-full h-32 object-cover rounded-lg mb-3"></button>
+          <h4 classname="font-semibold text-gray-800 font-poppins"><button key="{vehicle.id}" type="button" onclick="{()">{vehicle.name}</button></h4>
+          <p classname="text-sm text-gray-600"><button key="{vehicle.id}" type="button" onclick="{()">₹{vehicle.base_price}/km</button></p>
+          <p classname="text-sm text-gray-600"><button key="{vehicle.id}" type="button" onclick="{()">₹{vehicle.hourly_rate}/hour</button></p>))}
         </div>
-
-        <div className="space-y-4">
-          <input
-            type="password"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-            placeholder="Enter admin password"
-            onKeyPress={(e) => e.key === "Enter" && adminLogin()}
-          />
-          <button
-            onClick={adminLogin}
-            className="w-full bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-          >
-            <i className="fas fa-sign-in-alt mr-2"></i>Login
-          </button>
-          <button
-            onClick={() => setCurrentView("home")}
-            className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-          >
-            <i className="fas fa-arrow-left mr-2"></i>Back to Home
-          </button>
+      </div>
+      <div classname="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Customer Details</h3>
+          <div classname="space-y-4">
+            <input type="text" name="customer_name" value="{bookingForm.customer_name}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_name: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Full Name *" required /&gt; <input type="tel" name="customer_phone" value="{bookingForm.customer_phone}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_phone: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Phone Number *" required /&gt; <input type="email" name="customer_email" value="{bookingForm.customer_email}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_email: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Email Address" /&gt;
+          </div>
         </div>
+        <div>
+          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Additional Charges</h3>
+          <div classname="space-y-4">
+            <input type="number" min="0" value="{bookingForm.extra_km}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, extra_km: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Extra KM" /&gt; <input type="number" min="0" value="{bookingForm.extra_hours}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, extra_hours: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Extra Hours" /&gt; <input type="number" min="0" value="{bookingForm.toll_charges}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, toll_charges: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Toll Charges" /&gt; <input type="number" min="0" value="{bookingForm.parking_charges}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, parking_charges: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Parking Charges" /&gt;
+          </div>
+        </div>
+      </div>
+      <div classname="mt-8 bg-gray-50 p-6 rounded-xl">
+        <div classname="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
+          <span>Total Fare:</span> <span>₹{calculateFare()}</span>
+        </div>
+      </div><button type="submit" classname="w-full mt-8 bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg font-poppins">Book Now</button>
+    </form>
+  </main>
+</div>); const renderSummary = () =&gt; { const latestBooking = bookings[0]; if (!latestBooking) return null; return (
+<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
+  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
+    <div classname="max-w-4xl mx-auto flex justify-between items-center">
+      <h1 classname="text-2xl font-bold font-poppins">Booking Confirmed</h1><button onclick="{()">setCurrentView("home")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Home</button>
+    </div>
+  </header>
+  <main classname="max-w-4xl mx-auto p-4">
+    <div classname="bg-white rounded-2xl shadow-xl p-8 mt-8">
+      <div classname="text-center mb-8">
+        <h2 classname="text-3xl font-bold text-gray-800 mb-2 font-poppins">Booking Confirmed!</h2>
+        <p classname="text-xl text-[#4b2aad] font-bold">{latestBooking.trip_id}</p>
+      </div>
+      <div classname="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Trip Details</h3>
+          <div classname="space-y-3">
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.pickup_location}</span>
+            </div>
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.drop_location}</span>
+            </div>
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.pickup_date}</span>
+            </div>
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.pickup_time}</span>
+            </div>
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.vehicle_name}</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Customer Details</h3>
+          <div classname="space-y-3">
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.customer_name}</span>
+            </div>
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.customer_phone}</span>
+            </div>{latestBooking.customer_email &amp;& (
+            <div classname="flex items-center">
+              <span classname="ml-3">{latestBooking.customer_email}</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
+      <div classname="mt-8 bg-gray-50 p-6 rounded-xl">
+        <div classname="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
+          <span>Total Fare:</span> <span>₹{latestBooking.total_fare}</span>
+        </div>
+      </div>
+      <div classname="mt-8 flex flex-col md:flex-row gap-4">
+        <button onclick="{()">exportToPDF(latestBooking)} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Export PDF</button> <button onclick="{()">shareOnWhatsApp(latestBooking)} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Share on WhatsApp</button>
       </div>
     </div>
-  );
-
-  const renderAdmin = () => {
-    const stats = getBookingStats();
-
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-        <header className="bg-[#4b2aad] text-white p-4 shadow-lg">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <h1 className="text-2xl font-bold font-poppins">Admin Dashboard</h1>
-            <div className="flex space-x-4">
-              <button
-                onClick={() => setCurrentView("pricing")}
-                className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors"
-              >
-                <i className="fas fa-cog mr-2"></i>Pricing
-              </button>
-              <button
-                onClick={() => {
-                  setIsAdmin(false);
-                  setCurrentView("home");
-                }}
-                className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
-              >
-                <i className="fas fa-sign-out-alt mr-2"></i>Logout
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <main className="max-w-6xl mx-auto p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8 mt-8">
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <i className="fas fa-list text-3xl text-blue-500 mb-3"></i>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {stats.total}
-              </h3>
-              <p className="text-gray-600">Total Bookings</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <i className="fas fa-check-circle text-3xl text-green-500 mb-3"></i>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {stats.confirmed}
-              </h3>
-              <p className="text-gray-600">Confirmed</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <i className="fas fa-flag-checkered text-3xl text-purple-500 mb-3"></i>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {stats.completed}
-              </h3>
-              <p className="text-gray-600">Completed</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <i className="fas fa-times-circle text-3xl text-red-500 mb-3"></i>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {stats.cancelled}
-              </h3>
-              <p className="text-gray-600">Cancelled</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-lg p-6 text-center">
-              <i className="fas fa-rupee-sign text-3xl text-green-600 mb-3"></i>
-              <h3 className="text-2xl font-bold text-gray-800">
-                ₹{stats.totalRevenue}
-              </h3>
-              <p className="text-gray-600">Revenue</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 font-poppins">
-              All Bookings
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-3 font-poppins">Trip ID</th>
-                    <th className="text-left p-3 font-poppins">Customer</th>
-                    <th className="text-left p-3 font-poppins">Route</th>
-                    <th className="text-left p-3 font-poppins">Date/Time</th>
-                    <th className="text-left p-3 font-poppins">Vehicle</th>
-                    <th className="text-left p-3 font-poppins">Fare</th>
-                    <th className="text-left p-3 font-poppins">Status</th>
-                    <th className="text-left p-3 font-poppins">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bookings.map((booking) => (
-                    <tr key={booking.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 font-bold text-[#4b2aad]">
-                        {booking.trip_id}
-                      </td>
-                      <td className="p-3">
-                        <div>
-                          <div className="font-semibold">
-                            {booking.customer_name}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {booking.customer_phone}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className="text-sm">
-                          <div>
-                            <i className="fas fa-map-marker-alt text-green-500 mr-1"></i>
-                            {booking.pickup_location}
-                          </div>
-                          <div>
-                            <i className="fas fa-map-marker-alt text-red-500 mr-1"></i>
-                            {booking.drop_location}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className="text-sm">
-                          <div>{booking.pickup_date}</div>
-                          <div>{booking.pickup_time}</div>
-                        </div>
-                      </td>
-                      <td className="p-3">{booking.vehicle_name}</td>
-                      <td className="p-3 font-bold">₹{booking.total_fare}</td>
-                      <td className="p-3">
-                        <select
-                          value={booking.status}
-                          onChange={(e) =>
-                            updateBookingStatus(booking.id, e.target.value)
-                          }
-                          className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                            booking.status === "confirmed"
-                              ? "bg-blue-100 text-blue-800"
-                              : booking.status === "in-progress"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : booking.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          <option value="confirmed">Confirmed</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => {
-                              const driverName = prompt("Enter driver name:");
-                              if (driverName)
-                                assignDriver(booking.id, driverName);
-                            }}
-                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
-                            title="Assign Driver"
-                          >
-                            <i className="fas fa-user-plus"></i>
-                          </button>
-                          <button
-                            onClick={() => shareOnWhatsApp(booking)}
-                            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
-                            title="Share on WhatsApp"
-                          >
-                            <i className="fab fa-whatsapp"></i>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </main>
+  </main>
+</div>); }; const renderAdminLogin = () =&gt; (
+<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white flex items-center justify-center">
+  <div classname="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <div classname="text-center mb-8">
+      <h2 classname="text-2xl font-bold text-gray-800 font-poppins">Admin Login</h2>
+    </div>
+    <div classname="space-y-4">
+      <input type="password" value="{adminPassword}" onchange="{(e)"> setAdminPassword(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter admin password" onKeyPress={(e) =&gt; e.key === "Enter" &amp;& adminLogin()} /&gt; <button onclick="{adminLogin}" classname="w-full bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-colors">Login</button> <button onclick="{()">setCurrentView("home")} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Back to Home</button>
+    </div>
+  </div>
+</div>); const renderAdmin = () =&gt; { const stats = getBookingStats(); return (
+<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
+  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
+    <div classname="max-w-6xl mx-auto flex justify-between items-center">
+      <h1 classname="text-2xl font-bold font-poppins">Admin Dashboard</h1>
+      <div classname="flex space-x-4">
+        <button onclick="{()">setCurrentView("pricing")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Pricing</button> <button onclick="{()">{ setIsAdmin(false); setCurrentView("home"); }} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors" &gt; Logout</button>
       </div>
-    );
-  };
-
-  const renderPricing = () => (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-      <header className="bg-[#4b2aad] text-white p-4 shadow-lg">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-bold font-poppins">Pricing Settings</h1>
-          <button
-            onClick={() => setCurrentView("admin")}
-            className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors"
-          >
-            <i className="fas fa-arrow-left mr-2"></i>Back to Dashboard
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 mt-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6 font-poppins">
-            Vehicle Pricing
-          </h2>
-
-          <div className="space-y-6">
-            {vehicles.map((vehicle) => (
-              <div
-                key={vehicle.id}
-                className="border border-gray-200 rounded-xl p-6"
-              >
-                <h3 className="text-xl font-bold text-gray-800 mb-4 font-poppins">
-                  {vehicle.name}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    </div>
+  </header>
+  <main classname="max-w-6xl mx-auto p-4">
+    <div classname="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8 mt-8">
+      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
+        <h3 classname="text-2xl font-bold text-gray-800">{stats.total}</h3>
+        <p classname="text-gray-600">Total Bookings</p>
+      </div>
+      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
+        <h3 classname="text-2xl font-bold text-gray-800">{stats.confirmed}</h3>
+        <p classname="text-gray-600">Confirmed</p>
+      </div>
+      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
+        <h3 classname="text-2xl font-bold text-gray-800">{stats.completed}</h3>
+        <p classname="text-gray-600">Completed</p>
+      </div>
+      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
+        <h3 classname="text-2xl font-bold text-gray-800">{stats.cancelled}</h3>
+        <p classname="text-gray-600">Cancelled</p>
+      </div>
+      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
+        <h3 classname="text-2xl font-bold text-gray-800">₹{stats.totalRevenue}</h3>
+        <p classname="text-gray-600">Revenue</p>
+      </div>
+    </div>
+    <div classname="bg-white rounded-2xl shadow-xl p-6">
+      <h2 classname="text-2xl font-bold text-gray-800 mb-6 font-poppins">All Bookings</h2>
+      <div classname="overflow-x-auto">
+        {bookings.map((booking) =&gt; ( ))}
+        <table classname="w-full">
+          <thead>
+            <tr classname="border-b">
+              <th classname="text-left p-3 font-poppins">Trip ID</th>
+              <th classname="text-left p-3 font-poppins">Customer</th>
+              <th classname="text-left p-3 font-poppins">Route</th>
+              <th classname="text-left p-3 font-poppins">Date/Time</th>
+              <th classname="text-left p-3 font-poppins">Vehicle</th>
+              <th classname="text-left p-3 font-poppins">Fare</th>
+              <th classname="text-left p-3 font-poppins">Status</th>
+              <th classname="text-left p-3 font-poppins">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr key="{booking.id}" classname="border-b hover:bg-gray-50">
+              <td classname="p-3 font-bold text-[#4b2aad]">{booking.trip_id}</td>
+              <td classname="p-3">
+                <div>
+                  <div classname="font-semibold">
+                    {booking.customer_name}
+                  </div>
+                  <div classname="text-sm text-gray-600">
+                    {booking.customer_phone}
+                  </div>
+                </div>
+              </td>
+              <td classname="p-3">
+                <div classname="text-sm">
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-2">
-                      Base Price (per km)
-                    </label>
-                    <input
-                      type="number"
-                      value={vehicle.base_price}
-                      onChange={(e) =>
-                        updateVehiclePrice(
-                          vehicle.id,
-                          "base_price",
-                          e.target.value
-                        )
-                      }
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                    />
+                    {booking.pickup_location}
                   </div>
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-2">
-                      Hourly Rate
-                    </label>
-                    <input
-                      type="number"
-                      value={vehicle.hourly_rate}
-                      onChange={(e) =>
-                        updateVehiclePrice(
-                          vehicle.id,
-                          "hourly_rate",
-                          e.target.value
-                        )
-                      }
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent"
-                    />
+                    {booking.drop_location}
                   </div>
                 </div>
-              </div>
-            ))}
+              </td>
+              <td classname="p-3">
+                <div classname="text-sm">
+                  <div>
+                    {booking.pickup_date}
+                  </div>
+                  <div>
+                    {booking.pickup_time}
+                  </div>
+                </div>
+              </td>
+              <td classname="p-3">{booking.vehicle_name}</td>
+              <td classname="p-3 font-bold">₹{booking.total_fare}</td>
+              <td classname="p-3"><select value="{booking.status}" onchange="{(e)">
+                <option value="confirmed">
+                  Confirmed
+                </option>
+                <option value="in-progress">
+                  In Progress
+                </option>
+                <option value="completed">
+                  Completed
+                </option>
+                <option value="cancelled">
+                  Cancelled
+                </option>
+              </select></td>
+              <td classname="p-3">
+                <div classname="flex space-x-2">
+                  <button onclick="{()">{ const driverName = prompt("Enter driver name:"); if (driverName) assignDriver(booking.id, driverName); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm" title="Assign Driver" &gt;</button> <button onclick="{()">shareOnWhatsApp(booking)} className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm" title="Share on WhatsApp" &gt;</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>); }; const renderPricing = () =&gt; (
+<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
+  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
+    <div classname="max-w-4xl mx-auto flex justify-between items-center">
+      <h1 classname="text-2xl font-bold font-poppins">Pricing Settings</h1><button onclick="{()">setCurrentView("admin")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Back to Dashboard</button>
+    </div>
+  </header>
+  <main classname="max-w-4xl mx-auto p-4">
+    <div classname="bg-white rounded-2xl shadow-xl p-8 mt-8">
+      <h2 classname="text-2xl font-bold text-gray-800 mb-6 font-poppins">Vehicle Pricing</h2>
+      <div classname="space-y-6">
+        {vehicles.map((vehicle) =&gt; (
+        <div key="{vehicle.id}" classname="border border-gray-200 rounded-xl p-6">
+          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">{vehicle.name}</h3>
+          <div classname="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label classname="block text-gray-700 font-semibold mb-2">Base Price (per km)</label> <input type="number" value="{vehicle.base_price}" onchange="{(e)"> updateVehiclePrice( vehicle.id, "base_price", e.target.value ) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
+            </div>
+            <div>
+              <label classname="block text-gray-700 font-semibold mb-2">Hourly Rate</label> <input type="number" value="{vehicle.hourly_rate}" onchange="{(e)"> updateVehiclePrice( vehicle.id, "hourly_rate", e.target.value ) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
+            </div>
           </div>
-        </div>
-      </main>
+        </div>))}
+      </div>
     </div>
-  );
-
-  return (
-    <div className="font-poppins">
-      {currentView === "home" && renderHome()}
-      {currentView === "summary" && renderSummary()}
-      {currentView === "admin-login" && renderAdminLogin()}
-      {currentView === "admin" && isAdmin && renderAdmin()}
-      {currentView === "pricing" && isAdmin && renderPricing()}
-
-      {toast.show && (
-        <div
-          className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white font-semibold ${
-            toast.type === "error" ? "bg-red-500" : "bg-green-500"
-          }`}
-        >
-          <i
-            className={`fas ${
-              toast.type === "error"
-                ? "fa-exclamation-circle"
-                : "fa-check-circle"
-            } mr-2`}
-          ></i>
-          {toast.message}
-        </div>
-      )}
-
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
-        @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
-        
-        .font-poppins {
-          font-family: 'Poppins', sans-serif;
-        }
-        
-        * {
-          box-sizing: border-box;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          font-family: 'Poppins', sans-serif;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-export default MainComponent;
+  </main>
+</div>); return (
+<div classname="font-poppins">
+  {currentView === "home" &amp;& renderHome()} {currentView === "summary" &amp;& renderSummary()} {currentView === "admin-login" &amp;& renderAdminLogin()} {currentView === "admin" &amp;& isAdmin &amp;& renderAdmin()} {currentView === "pricing" &amp;& isAdmin &amp;& renderPricing()} {toast.show &amp;& (
+  <div classname="{`fixed" top-4="" right-4="" z-50="" p-4="" rounded-lg="" shadow-lg="" text-white="" font-semibold="" toast.type="==">
+    {toast.message}
+  </div>)}
+</div>); } export default MainComponent;
