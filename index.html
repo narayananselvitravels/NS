@@ -1,282 +1,426 @@
-"use client"; import React from "react"; function MainComponent() { const [currentView, setCurrentView] = React.useState("home"); const [bookings, setBookings] = React.useState([]); const [vehicles, setVehicles] = React.useState([]); const [isAdmin, setIsAdmin] = React.useState(false); const [adminPassword, setAdminPassword] = React.useState(""); const [toast, setToast] = React.useState({ show: false, message: "", type: "", }); const [loading, setLoading] = React.useState(false); const [bookingForm, setBookingForm] = React.useState({ booking_type: "local", pickup_location: "", drop_location: "", pickup_date: "", pickup_time: "", vehicle_id: 1, hours: 4, days: 1, extra_km: 0, extra_hours: 0, toll_charges: 0, parking_charges: 0, customer_name: "", customer_phone: "", customer_email: "", }); React.useEffect(() =&gt; { loadVehicles(); loadBookings(); }, []); const loadVehicles = async () =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "get_vehicles" }), }); const data = await response.json(); if (data.vehicles) { setVehicles(data.vehicles); if (data.vehicles.length &gt; 0) { setBookingForm((prev) =&gt; ({ ...prev, vehicle_id: data.vehicles[0].id, })); } } } catch (error) { showToast("Failed to load vehicles", "error"); } }; const loadBookings = async () =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list_bookings", limit: 100 }), }); const data = await response.json(); if (data.bookings) { setBookings(data.bookings); } } catch (error) { showToast("Failed to load bookings", "error"); } }; const showToast = (message, type = "success") =&gt; { setToast({ show: true, message, type }); setTimeout(() =&gt; setToast({ show: false, message: "", type: "" }), 3000); }; const calculateFare = () =&gt; { const vehicle = vehicles.find((v) =&gt; v.id === bookingForm.vehicle_id); if (!vehicle) return 0; let baseAmount = 0; switch (bookingForm.booking_type) { case "local": baseAmount = vehicle.base_price * 80; break; case "outstation": baseAmount = vehicle.base_price * 300 * bookingForm.days; break; case "hourly": baseAmount = vehicle.hourly_rate * bookingForm.hours; break; case "airport": baseAmount = vehicle.base_price * 50; break; default: baseAmount = 0; } const extraKmAmount = bookingForm.extra_km * vehicle.base_price; const extraHourAmount = bookingForm.extra_hours * vehicle.hourly_rate; return ( baseAmount + extraKmAmount + extraHourAmount + bookingForm.toll_charges + bookingForm.parking_charges ); }; const handleBookingSubmit = async (e) =&gt; { e.preventDefault(); setLoading(true); if ( !bookingForm.pickup_location || !bookingForm.drop_location || !bookingForm.pickup_date || !bookingForm.pickup_time || !bookingForm.customer_name || !bookingForm.customer_phone ) { showToast("Please fill all required fields", "error"); setLoading(false); return; } try { const vehicle = vehicles.find((v) =&gt; v.id === bookingForm.vehicle_id); const totalFare = calculateFare(); const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create_booking", ...bookingForm, vehicle_name: vehicle.name, total_fare: totalFare, }), }); const data = await response.json(); if (data.success) { showToast(`Booking confirmed! Trip ID: ${data.booking.trip_id}`); setCurrentView("summary"); await loadBookings(); // Reset form setBookingForm({ booking_type: "local", pickup_location: "", drop_location: "", pickup_date: "", pickup_time: "", vehicle_id: vehicles[0]?.id || 1, hours: 4, days: 1, extra_km: 0, extra_hours: 0, toll_charges: 0, parking_charges: 0, customer_name: "", customer_phone: "", customer_email: "", }); } else { showToast(data.error || "Failed to create booking", "error"); } } catch (error) { showToast("Failed to create booking", "error"); } finally { setLoading(false); } }; const exportToPDF = (booking) =&gt; { showToast("PDF export feature would be implemented with a PDF library"); }; const shareOnWhatsApp = (booking) =&gt; { const message = `NST Travels Booking Confirmed!\nTrip ID: ${booking.trip_id}\nFrom: ${booking.pickup_location}\nTo: ${booking.drop_location}\nDate: ${booking.pickup_date}\nTime: ${booking.pickup_time}\nVehicle: ${booking.vehicle_name}\nFare: ₹${booking.total_fare}`; const url = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(url, "_blank"); }; const adminLogin = () =&gt; { if (adminPassword === "nst123") { setIsAdmin(true); setCurrentView("admin"); showToast("Admin login successful"); } else { showToast("Invalid password", "error"); } }; const updateBookingStatus = async (bookingId, status) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_booking", id: bookingId, status, }), }); const data = await response.json(); if (data.success) { showToast("Booking status updated"); await loadBookings(); } else { showToast(data.error || "Failed to update status", "error"); } } catch (error) { showToast("Failed to update status", "error"); } }; const assignDriver = async (bookingId, driverName, driverPhone) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "assign_driver", booking_id: bookingId, driver_name: driverName, driver_phone: driverPhone, }), }); const data = await response.json(); if (data.success) { showToast("Driver assigned successfully"); await loadBookings(); } else { showToast(data.error || "Failed to assign driver", "error"); } } catch (error) { showToast("Failed to assign driver", "error"); } }; const updateVehiclePrice = async (vehicleId, field, value) =&gt; { try { const response = await fetch("/api/db-bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update_vehicle", id: vehicleId, [field]: parseFloat(value), }), }); const data = await response.json(); if (data.success) { showToast("Vehicle pricing updated"); await loadVehicles(); } else { showToast(data.error || "Failed to update pricing", "error"); } } catch (error) { showToast("Failed to update pricing", "error"); } }; const getBookingStats = () =&gt; { const total = bookings.length; const confirmed = bookings.filter((b) =&gt; b.status === "confirmed").length; const completed = bookings.filter((b) =&gt; b.status === "completed").length; const cancelled = bookings.filter((b) =&gt; b.status === "cancelled").length; const totalRevenue = bookings .filter((b) =&gt; b.status === "completed") .reduce((sum, b) =&gt; sum + parseFloat(b.total_fare || 0), 0); return { total, confirmed, completed, cancelled, totalRevenue }; }; const renderHome = () =&gt; (
-<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
-    <div classname="max-w-6xl mx-auto flex justify-between items-center">
-      <div classname="flex items-center space-x-3">
-        <h1 classname="text-2xl font-bold font-poppins">NST Travels</h1>
-      </div><button onclick="{()">setCurrentView("admin-login")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Admin</button>
-    </div>
-  </header>
-  <main classname="max-w-6xl mx-auto p-4">
-    <div classname="text-center mb-8 mt-8">
-      <h2 classname="text-4xl font-bold text-gray-800 mb-4 font-poppins">Book Your Ride</h2>
-      <p classname="text-gray-600 text-lg">Comfortable, Safe & Reliable Cab Service</p>
-    </div>
-    <div classname="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-      {[ { type: "local", icon: "fas fa-map-marker-alt", title: "Local", desc: "City rides", }, { type: "outstation", icon: "fas fa-route", title: "Outstation", desc: "Intercity travel", }, { type: "hourly", icon: "fas fa-clock", title: "Hourly", desc: "Rent by hour", }, { type: "airport", icon: "fas fa-plane", title: "Airport", desc: "Airport transfer", }, ].map((service) =&gt; ( <button key="{service.type}" onclick="{()">setBookingForm((prev) =&gt; ({ ...prev, booking_type: service.type, })) } className={`p-6 rounded-xl border-2 transition-all ${ bookingForm.booking_type === service.type ? "border-[#4b2aad] bg-purple-50" : "border-gray-200 hover:border-purple-300" }`} &gt;</button>
-      <h3 classname="font-semibold text-gray-800 font-poppins"><button key="{service.type}" onclick="{()">{service.title}</button></h3>
-      <p classname="text-sm text-gray-600"><button key="{service.type}" onclick="{()">{service.desc}</button></p>))}
-    </div>
-    <form onsubmit="{handleBookingSubmit}" classname="bg-white rounded-2xl shadow-xl p-6 md:p-8">
-      <div classname="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Pickup Location *</label> <input type="text" name="pickup_location" value="{bookingForm.pickup_location}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_location: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter pickup location" required /&gt;
-        </div>
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Drop Location *</label> <input type="text" name="drop_location" value="{bookingForm.drop_location}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, drop_location: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter drop location" required /&gt;
-        </div>
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Date *</label> <input type="date" name="pickup_date" value="{bookingForm.pickup_date}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_date: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" required /&gt;
-        </div>
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Time *</label> <input type="time" name="pickup_time" value="{bookingForm.pickup_time}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, pickup_time: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" required /&gt;
-        </div>{bookingForm.booking_type === "hourly" &amp;& (
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Hours</label> <input type="number" min="1" value="{bookingForm.hours}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, hours: parseInt(e.target.value), })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
-        </div>)} {bookingForm.booking_type === "outstation" &amp;& (
-        <div>
-          <label classname="block text-gray-700 font-semibold mb-2 font-poppins">Days</label> <input type="number" min="1" value="{bookingForm.days}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, days: parseInt(e.target.value), })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
-        </div>)}
-      </div>
-      <div classname="mt-8">
-        <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Select Vehicle</h3>
-        <div classname="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {vehicles.map((vehicle) =&gt; ( <button key="{vehicle.id}" type="button" onclick="{()">setBookingForm((prev) =&gt; ({ ...prev, vehicle_id: vehicle.id, })) } className={`p-4 rounded-xl border-2 transition-all ${ bookingForm.vehicle_id === vehicle.id ? "border-[#4b2aad] bg-purple-50" : "border-gray-200 hover:border-purple-300" }`} &gt; <img src="{vehicle.image}" alt="{vehicle.name}" classname="w-full h-32 object-cover rounded-lg mb-3"></button>
-          <h4 classname="font-semibold text-gray-800 font-poppins"><button key="{vehicle.id}" type="button" onclick="{()">{vehicle.name}</button></h4>
-          <p classname="text-sm text-gray-600"><button key="{vehicle.id}" type="button" onclick="{()">₹{vehicle.base_price}/km</button></p>
-          <p classname="text-sm text-gray-600"><button key="{vehicle.id}" type="button" onclick="{()">₹{vehicle.hourly_rate}/hour</button></p>))}
-        </div>
-      </div>
-      <div classname="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Customer Details</h3>
-          <div classname="space-y-4">
-            <input type="text" name="customer_name" value="{bookingForm.customer_name}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_name: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Full Name *" required /&gt; <input type="tel" name="customer_phone" value="{bookingForm.customer_phone}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_phone: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Phone Number *" required /&gt; <input type="email" name="customer_email" value="{bookingForm.customer_email}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, customer_email: e.target.value, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Email Address" /&gt;
-          </div>
-        </div>
-        <div>
-          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Additional Charges</h3>
-          <div classname="space-y-4">
-            <input type="number" min="0" value="{bookingForm.extra_km}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, extra_km: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Extra KM" /&gt; <input type="number" min="0" value="{bookingForm.extra_hours}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, extra_hours: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Extra Hours" /&gt; <input type="number" min="0" value="{bookingForm.toll_charges}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, toll_charges: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Toll Charges" /&gt; <input type="number" min="0" value="{bookingForm.parking_charges}" onchange="{(e)"> setBookingForm((prev) =&gt; ({ ...prev, parking_charges: parseInt(e.target.value) || 0, })) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Parking Charges" /&gt;
-          </div>
-        </div>
-      </div>
-      <div classname="mt-8 bg-gray-50 p-6 rounded-xl">
-        <div classname="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
-          <span>Total Fare:</span> <span>₹{calculateFare()}</span>
-        </div>
-      </div><button type="submit" classname="w-full mt-8 bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-colors text-lg font-poppins">Book Now</button>
-    </form>
-  </main>
-</div>); const renderSummary = () =&gt; { const latestBooking = bookings[0]; if (!latestBooking) return null; return (
-<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
-    <div classname="max-w-4xl mx-auto flex justify-between items-center">
-      <h1 classname="text-2xl font-bold font-poppins">Booking Confirmed</h1><button onclick="{()">setCurrentView("home")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Home</button>
-    </div>
-  </header>
-  <main classname="max-w-4xl mx-auto p-4">
-    <div classname="bg-white rounded-2xl shadow-xl p-8 mt-8">
-      <div classname="text-center mb-8">
-        <h2 classname="text-3xl font-bold text-gray-800 mb-2 font-poppins">Booking Confirmed!</h2>
-        <p classname="text-xl text-[#4b2aad] font-bold">{latestBooking.trip_id}</p>
-      </div>
-      <div classname="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div>
-          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Trip Details</h3>
-          <div classname="space-y-3">
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.pickup_location}</span>
-            </div>
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.drop_location}</span>
-            </div>
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.pickup_date}</span>
-            </div>
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.pickup_time}</span>
-            </div>
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.vehicle_name}</span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">Customer Details</h3>
-          <div classname="space-y-3">
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.customer_name}</span>
-            </div>
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.customer_phone}</span>
-            </div>{latestBooking.customer_email &amp;& (
-            <div classname="flex items-center">
-              <span classname="ml-3">{latestBooking.customer_email}</span>
-            </div>)}
-          </div>
-        </div>
-      </div>
-      <div classname="mt-8 bg-gray-50 p-6 rounded-xl">
-        <div classname="flex justify-between items-center text-2xl font-bold text-[#4b2aad] font-poppins">
-          <span>Total Fare:</span> <span>₹{latestBooking.total_fare}</span>
-        </div>
-      </div>
-      <div classname="mt-8 flex flex-col md:flex-row gap-4">
-        <button onclick="{()">exportToPDF(latestBooking)} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Export PDF</button> <button onclick="{()">shareOnWhatsApp(latestBooking)} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Share on WhatsApp</button>
-      </div>
-    </div>
-  </main>
-</div>); }; const renderAdminLogin = () =&gt; (
-<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white flex items-center justify-center">
-  <div classname="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-    <div classname="text-center mb-8">
-      <h2 classname="text-2xl font-bold text-gray-800 font-poppins">Admin Login</h2>
-    </div>
-    <div classname="space-y-4">
-      <input type="password" value="{adminPassword}" onchange="{(e)"> setAdminPassword(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" placeholder="Enter admin password" onKeyPress={(e) =&gt; e.key === "Enter" &amp;& adminLogin()} /&gt; <button onclick="{adminLogin}" classname="w-full bg-[#4b2aad] hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-colors">Login</button> <button onclick="{()">setCurrentView("home")} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-xl transition-colors" &gt; Back to Home</button>
-    </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NST Trip Sheet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: 'Poppins', sans-serif; margin: 0 auto; padding: 20px; max-width: 800px; background: #f4f6f9; }
+    label { font-weight: bold; margin-top: 10px; display: block; }
+    input, select, textarea, button {
+      width: 100%; padding: 10px; margin: 5px 0 15px 0;
+      border: 1px solid #ccc; border-radius: 5px; font-size: 16px;
+    }
+    button {
+      background: #4b2aad; color: white; border: none; cursor: pointer;
+    }
+    button:hover { background: #341c91; }
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .trip-card {
+      background: white; border: 1px solid #ccc; border-radius: 10px;
+      padding: 15px; margin-bottom: 10px;
+    }
+    .trip-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .popup, .ratePopup {
+      display: none; position: fixed; top: 5%; left: 50%; transform: translateX(-50%);
+      width: 95%; max-width: 800px; max-height: 90vh; overflow-y: auto;
+      background: white; padding: 20px; border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3); z-index: 1000;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #4b2aad; color: white; }
+    #printContent { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      #printContent, #printContent * { visibility: visible; }
+      #printContent { position: absolute; top: 0; left: 0; width: 100%; }
+    }
+    .invoice {
+      padding: 20px; border: 2px solid #000; margin-bottom: 30px;
+      background: white; page-break-after: always;
+    }
+    .invoice h2 {
+      color: #4b2aad; border-bottom: 2px solid #000;
+      padding-bottom: 5px; margin-bottom: 15px; font-size: 24px;
+    }
+    .invoice-table {
+      width: 100%; border-collapse: collapse;
+      margin-top: 10px; font-size: 16px;
+    }
+    .invoice-table th, .invoice-table td {
+      border: 1px solid #ccc; padding: 10px; text-align: left;
+    }
+    .invoice-table th { background: #f0f0f0; }
+    .section-title { font-weight: bold; margin-top: 20px; color: #333; }
+  </style>
+</head>
+<body>
+
+<h2>📝 NST Trip Sheet</h2>
+<div id="mainForm">
+  <label>Trip ID</label><input id="tripId" readonly>
+  <label>Date</label><input type="date" id="tripDate">
+  <label>Customer Name</label><input id="custName">
+  <label>Customer Number</label><input id="custNumber">
+  <label>Driver Name</label><input id="driverName">
+  <label>Driver Number</label><input id="driverNumber">
+  <label>Vehicle Model</label>
+  <select id="vehicleModel" onchange="sync(true)">
+    <option value="">-- Select --</option>
+    <option>Innova Crysta</option>
+    <option>Innova Hycross</option>
+    <option>Force Urbania</option>
+  </select>
+  <label>Vehicle Number</label>
+  <select id="vehicleNo" onchange="sync(false)">
+    <option value="">-- Select --</option>
+    <option>PY05N0505</option>
+    <option>PY01DB1007</option>
+    <option>TN14AP2084</option>
+  </select>
+  <label>Start Time</label><input type="time" id="startTime" onchange="recalc()">
+  <label>End Time</label><input type="time" id="endTime" onchange="recalc()">
+  <label>Duration (hrs)</label><input id="duration" readonly>
+  <label>Extra Hours</label><input id="extraHours" readonly>
+  <label>Start KM</label><input type="number" id="startKM" onchange="recalc()">
+  <label>End KM</label><input type="number" id="endKM" onchange="recalc()">
+  <label>Total KM</label><input id="totalKM" readonly>
+  <label>Extra KM</label><input id="extraKM" readonly>
+  <label>Package ₹</label><input id="packageCost" readonly>
+  <label>Extra Hr ₹</label><input id="extraHrCost" readonly>
+  <label>Extra KM ₹</label><input id="extraKmCost" readonly>
+  <label>Toll ₹</label><input type="number" id="toll" value="0" onchange="recalc()">
+  <label>Parking ₹</label><input type="number" id="parking" value="0" onchange="recalc()">
+  <label>Total ₹</label><input id="totalCost" readonly>
+  <label>Note</label><textarea id="note" rows="3" placeholder="Enter notes..."></textarea>
+  <input type="hidden" id="eHr"><input type="hidden" id="eKm"><input type="hidden" id="freeKm">
+  <div class="btn-group">
+    <button onclick="saveTrip()">💾 Save</button>
+    <button onclick="showTrips()">📑 View All</button>
+    <button onclick="shareLast()">📤 WhatsApp</button>
+    <button onclick="exportPDF()">📄 Export PDF</button>
   </div>
-</div>); const renderAdmin = () =&gt; { const stats = getBookingStats(); return (
-<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
-    <div classname="max-w-6xl mx-auto flex justify-between items-center">
-      <h1 classname="text-2xl font-bold font-poppins">Admin Dashboard</h1>
-      <div classname="flex space-x-4">
-        <button onclick="{()">setCurrentView("pricing")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Pricing</button> <button onclick="{()">{ setIsAdmin(false); setCurrentView("home"); }} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors" &gt; Logout</button>
+  <button style="margin-top:15px;" onclick="openRates()">✏️ Edit Rates</button>
+</div>
+
+<div class="popup" id="tripPopup">
+  <h3>📋 All Trips</h3>
+  <div class="btn-group">
+    <button onclick="exportToExcel()">📥 Export Excel</button>
+    <button onclick="tripPopup.style.display='none'">Close</button>
+  </div>
+  <div id="tripList"></div>
+</div>
+
+<div class="ratePopup" id="ratePopup">
+  <h3>✏️ Edit Vehicle Rates</h3>
+  <table>
+    <thead><tr><th>Model</th><th>Package ₹</th><th>Extra Hr ₹</th><th>Extra KM ₹</th><th>Free KM</th></tr></thead>
+    <tbody id="rateRows"></tbody>
+  </table>
+  <button onclick="saveRates()">Save Rates</button>
+  <button onclick="ratePopup.style.display='none'">Cancel</button>
+</div>
+
+<div id="printContent"></div>
+<script>
+let RKEY = 'nst-rates', TKEY = 'nst-trips';
+let rates = JSON.parse(localStorage.getItem(RKEY)) || {
+  "Innova Crysta": { pkg: 7500, hr: 1000, km: 20, free: 80, no: "PY05N0505" },
+  "Innova Hycross": { pkg: 8500, hr: 1200, km: 24, free: 60, no: "PY01DB1007" },
+  "Force Urbania": { pkg: 9500, hr: 1500, km: 26, free: 70, no: "TN14AP2084" }
+};
+let editingId = null;
+
+function sync(fromModel) {
+  if (fromModel) {
+    let model = vehicleModel.value;
+    if (rates[model]) {
+      vehicleNo.value = rates[model].no;
+      packageCost.value = rates[model].pkg;
+      eHr.value = rates[model].hr;
+      eKm.value = rates[model].km;
+      freeKm.value = rates[model].free;
+    }
+  } else {
+    let no = vehicleNo.value;
+    for (let model in rates) {
+      if (rates[model].no === no) {
+        vehicleModel.value = model;
+        sync(true);
+        break;
+      }
+    }
+  }
+  recalc();
+}
+function to12Hr(timeStr) {
+  const [h, m] = timeStr.split(":");
+  let hour = parseInt(h);
+  let suffix = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+  return `${hour}:${m} ${suffix}`;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+}
+function recalc() {
+  if (startTime.value && endTime.value) {
+    let s = new Date(`1970-01-01T${startTime.value}`);
+    let e = new Date(`1970-01-01T${endTime.value}`);
+    let diff = (e - s) / 3600000;
+    if (diff < 0) diff += 24;
+    let hrs = Math.ceil(diff);
+    duration.value = hrs;
+    extraHours.value = hrs > 8 ? hrs - 8 : 0;
+  }
+  let totKm = endKM.value - startKM.value;
+  totalKM.value = totKm;
+  extraKM.value = totKm > freeKm.value ? totKm - freeKm.value : 0;
+  extraHrCost.value = (extraHours.value || 0) * eHr.value;
+  extraKmCost.value = (extraKM.value || 0) * eKm.value;
+  totalCost.value = (+packageCost.value || 0) + (+extraHrCost.value || 0) + (+extraKmCost.value || 0) + (+toll.value || 0) + (+parking.value || 0);
+}
+function genId() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  for (let i = 1; i <= 999; i++) {
+    let id = "#NST" + String(i).padStart(3, '0');
+    if (!arr.find(t => t.id === id)) return id;
+  }
+  return "#NST999";
+}
+function saveTrip() {
+  let trip = {
+    id: tripId.value || genId(),
+    date: tripDate.value,
+    note: note.value,
+    cust: custName.value,
+    custNum: custNumber.value,
+    driver: driverName.value,
+    driverNum: driverNumber.value,
+    model: vehicleModel.value,
+    no: vehicleNo.value,
+    start: startTime.value,
+    end: endTime.value,
+    duration: duration.value,
+    extraHr: extraHours.value,
+    startKM: startKM.value,
+    endKM: endKM.value,
+    totalKM: totalKM.value,
+    extraKM: extraKM.value,
+    pkg: packageCost.value,
+    hrCost: extraHrCost.value,
+    kmCost: extraKmCost.value,
+    toll: toll.value,
+    park: parking.value,
+    total: totalCost.value
+  };
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (editingId) {
+    let i = arr.findIndex(t => t.id === editingId);
+    if (i >= 0) arr[i] = trip;
+    editingId = null;
+  } else {
+    arr.push(trip);
+  }
+  localStorage.setItem(TKEY, JSON.stringify(arr));
+  clearForm();
+}
+function clearForm() {
+  document.querySelectorAll('#mainForm input, #mainForm select, #mainForm textarea').forEach(el => el.value = '');
+  tripId.value = genId();
+}
+function showTrips() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  tripList.innerHTML = arr.map(t => `
+    <div class="trip-card">
+      <b>${t.id}</b> (${formatDate(t.date)})<br>
+      ${t.model} - ${t.no}<br>
+      ${to12Hr(t.start)} → ${to12Hr(t.end)} (${t.duration}h)<br>
+      Extra Hr: ${t.extraHr} | Extra KM: ${t.extraKM}<br>
+      Toll: ₹${t.toll} | Parking: ₹${t.park}<br>
+      <b>Total: Rs ${t.total}</b>
+      <div class="trip-actions">
+        <button onclick="editTrip('${t.id}')">✏️ Edit</button>
+        <button onclick="deleteTrip('${t.id}')">❌ Delete</button>
+        <button onclick="shareTrip('${t.id}')">📤 Share</button>
       </div>
-    </div>
-  </header>
-  <main classname="max-w-6xl mx-auto p-4">
-    <div classname="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8 mt-8">
-      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
-        <h3 classname="text-2xl font-bold text-gray-800">{stats.total}</h3>
-        <p classname="text-gray-600">Total Bookings</p>
-      </div>
-      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
-        <h3 classname="text-2xl font-bold text-gray-800">{stats.confirmed}</h3>
-        <p classname="text-gray-600">Confirmed</p>
-      </div>
-      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
-        <h3 classname="text-2xl font-bold text-gray-800">{stats.completed}</h3>
-        <p classname="text-gray-600">Completed</p>
-      </div>
-      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
-        <h3 classname="text-2xl font-bold text-gray-800">{stats.cancelled}</h3>
-        <p classname="text-gray-600">Cancelled</p>
-      </div>
-      <div classname="bg-white rounded-xl shadow-lg p-6 text-center">
-        <h3 classname="text-2xl font-bold text-gray-800">₹{stats.totalRevenue}</h3>
-        <p classname="text-gray-600">Revenue</p>
-      </div>
-    </div>
-    <div classname="bg-white rounded-2xl shadow-xl p-6">
-      <h2 classname="text-2xl font-bold text-gray-800 mb-6 font-poppins">All Bookings</h2>
-      <div classname="overflow-x-auto">
-        {bookings.map((booking) =&gt; ( ))}
-        <table classname="w-full">
-          <thead>
-            <tr classname="border-b">
-              <th classname="text-left p-3 font-poppins">Trip ID</th>
-              <th classname="text-left p-3 font-poppins">Customer</th>
-              <th classname="text-left p-3 font-poppins">Route</th>
-              <th classname="text-left p-3 font-poppins">Date/Time</th>
-              <th classname="text-left p-3 font-poppins">Vehicle</th>
-              <th classname="text-left p-3 font-poppins">Fare</th>
-              <th classname="text-left p-3 font-poppins">Status</th>
-              <th classname="text-left p-3 font-poppins">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr key="{booking.id}" classname="border-b hover:bg-gray-50">
-              <td classname="p-3 font-bold text-[#4b2aad]">{booking.trip_id}</td>
-              <td classname="p-3">
-                <div>
-                  <div classname="font-semibold">
-                    {booking.customer_name}
-                  </div>
-                  <div classname="text-sm text-gray-600">
-                    {booking.customer_phone}
-                  </div>
-                </div>
-              </td>
-              <td classname="p-3">
-                <div classname="text-sm">
-                  <div>
-                    {booking.pickup_location}
-                  </div>
-                  <div>
-                    {booking.drop_location}
-                  </div>
-                </div>
-              </td>
-              <td classname="p-3">
-                <div classname="text-sm">
-                  <div>
-                    {booking.pickup_date}
-                  </div>
-                  <div>
-                    {booking.pickup_time}
-                  </div>
-                </div>
-              </td>
-              <td classname="p-3">{booking.vehicle_name}</td>
-              <td classname="p-3 font-bold">₹{booking.total_fare}</td>
-              <td classname="p-3"><select value="{booking.status}" onchange="{(e)">
-                <option value="confirmed">
-                  Confirmed
-                </option>
-                <option value="in-progress">
-                  In Progress
-                </option>
-                <option value="completed">
-                  Completed
-                </option>
-                <option value="cancelled">
-                  Cancelled
-                </option>
-              </select></td>
-              <td classname="p-3">
-                <div classname="flex space-x-2">
-                  <button onclick="{()">{ const driverName = prompt("Enter driver name:"); if (driverName) assignDriver(booking.id, driverName); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm" title="Assign Driver" &gt;</button> <button onclick="{()">shareOnWhatsApp(booking)} className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm" title="Share on WhatsApp" &gt;</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </main>
-</div>); }; const renderPricing = () =&gt; (
-<div classname="min-h-screen bg-gradient-to-br from-purple-50 to-white">
-  <header classname="bg-[#4b2aad] text-white p-4 shadow-lg">
-    <div classname="max-w-4xl mx-auto flex justify-between items-center">
-      <h1 classname="text-2xl font-bold font-poppins">Pricing Settings</h1><button onclick="{()">setCurrentView("admin")} className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors" &gt; Back to Dashboard</button>
-    </div>
-  </header>
-  <main classname="max-w-4xl mx-auto p-4">
-    <div classname="bg-white rounded-2xl shadow-xl p-8 mt-8">
-      <h2 classname="text-2xl font-bold text-gray-800 mb-6 font-poppins">Vehicle Pricing</h2>
-      <div classname="space-y-6">
-        {vehicles.map((vehicle) =&gt; (
-        <div key="{vehicle.id}" classname="border border-gray-200 rounded-xl p-6">
-          <h3 classname="text-xl font-bold text-gray-800 mb-4 font-poppins">{vehicle.name}</h3>
-          <div classname="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label classname="block text-gray-700 font-semibold mb-2">Base Price (per km)</label> <input type="number" value="{vehicle.base_price}" onchange="{(e)"> updateVehiclePrice( vehicle.id, "base_price", e.target.value ) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
-            </div>
-            <div>
-              <label classname="block text-gray-700 font-semibold mb-2">Hourly Rate</label> <input type="number" value="{vehicle.hourly_rate}" onchange="{(e)"> updateVehiclePrice( vehicle.id, "hourly_rate", e.target.value ) } className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4b2aad] focus:border-transparent" /&gt;
-            </div>
-          </div>
-        </div>))}
-      </div>
-    </div>
-  </main>
-</div>); return (
-<div classname="font-poppins">
-  {currentView === "home" &amp;& renderHome()} {currentView === "summary" &amp;& renderSummary()} {currentView === "admin-login" &amp;& renderAdminLogin()} {currentView === "admin" &amp;& isAdmin &amp;& renderAdmin()} {currentView === "pricing" &amp;& isAdmin &amp;& renderPricing()} {toast.show &amp;& (
-  <div classname="{`fixed" top-4="" right-4="" z-50="" p-4="" rounded-lg="" shadow-lg="" text-white="" font-semibold="" toast.type="==">
-    {toast.message}
-  </div>)}
-</div>); } export default MainComponent;
+    </div>`).join('') || 'No trips yet';
+  tripPopup.style.display = 'block';
+}
+function editTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let t = arr.find(x => x.id === id);
+  if (!t) return;
+  editingId = id;
+  tripId.value = t.id;
+  tripDate.value = t.date;
+  note.value = t.note || "";
+  custName.value = t.cust;
+  custNumber.value = t.custNum;
+  driverName.value = t.driver;
+  driverNumber.value = t.driverNum;
+  vehicleModel.value = t.model;
+  vehicleNo.value = t.no;
+  startTime.value = t.start;
+  endTime.value = t.end;
+  startKM.value = t.startKM;
+  endKM.value = t.endKM;
+  toll.value = t.toll;
+  parking.value = t.park;
+  sync(true);
+  recalc();
+  tripPopup.style.display = 'none';
+}
+function deleteTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  arr = arr.filter(t => t.id !== id);
+  localStorage.setItem(TKEY, JSON.stringify(arr));
+  showTrips();
+}
+function shareTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let t = arr.find(x => x.id === id);
+  if (!t) return;
+  let msg = `📋 *TRIP SUMMARY*\n*TRIP ID:* ${t.id}\n*DATE:* ${formatDate(t.date)}
+
+👤 *CUSTOMER INFO*
+• Name: ${t.cust}
+• Number: ${t.custNum}
+
+👨‍✈️ *DRIVER INFO*
+• Name: ${t.driver}
+• Number: ${t.driverNum}
+
+🚘 *VEHICLE INFO*
+• Model: ${t.model}
+• Vehicle No: ${t.no}
+
+🕒 *TIME & DISTANCE*
+• Start Time: ${to12Hr(t.start)}
+• End Time: ${to12Hr(t.end)}
+• Duration: ${t.duration} hrs
+• Extra Hrs: ${t.extraHr}
+• Total KM: ${t.totalKM} km
+• Extra KM: ${t.extraKM} km
+
+💰 *BILLING*
+• Package: ₹${t.pkg}
+• Extra Hrs: ₹${t.hrCost}
+• Extra KM: ₹${t.kmCost}
+• Toll: ₹${t.toll}
+• Parking: ₹${t.park}
+• Total: ₹${t.total}
+
+📝 Note: ${t.note || "-"}`;
+  window.open("https://wa.me/?text=" + encodeURIComponent(msg));
+}
+function shareLast() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (arr.length) shareTrip(arr[arr.length - 1].id);
+}
+function openRates() {
+  rateRows.innerHTML = '';
+  for (let m in rates) {
+    let r = rates[m];
+    rateRows.innerHTML += `
+      <tr>
+        <td>${m}</td>
+        <td><input type="number" value="${r.pkg}" onchange="rates['${m}'].pkg=this.value"></td>
+        <td><input type="number" value="${r.hr}" onchange="rates['${m}'].hr=this.value"></td>
+        <td><input type="number" value="${r.km}" onchange="rates['${m}'].km=this.value"></td>
+        <td><input type="number" value="${r.free}" onchange="rates['${m}'].free=this.value"></td>
+      </tr>`;
+  }
+  ratePopup.style.display = 'block';
+}
+function saveRates() {
+  localStorage.setItem(RKEY, JSON.stringify(rates));
+  ratePopup.style.display = 'none';
+  sync(true);
+}
+function exportPDF() {
+  const trips = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let content = '';
+  trips.forEach(t => {
+    content += `
+    <div class="invoice">
+      <h2>NST Travels – Trip Invoice</h2>
+      <div><strong>Trip ID:</strong> ${t.id}</div>
+      <div><strong>Date:</strong> ${formatDate(t.date)}</div>
+      <div class="section-title">Customer Info</div>
+      <div>Name: ${t.cust} | Number: ${t.custNum}</div>
+      <div class="section-title">Driver Info</div>
+      <div>Name: ${t.driver} | Number: ${t.driverNum}</div>
+      <div class="section-title">Vehicle Info</div>
+      <div>Model: ${t.model} | Number: ${t.no}</div>
+      <div class="section-title">Time & Distance</div>
+      <table class="invoice-table">
+        <tr><th>Start</th><th>End</th><th>Duration</th><th>Extra Hr</th><th>Total KM</th><th>Extra KM</th></tr>
+        <tr><td>${to12Hr(t.start)}</td><td>${to12Hr(t.end)}</td><td>${t.duration}</td><td>${t.extraHr}</td><td>${t.totalKM}</td><td>${t.extraKM}</td></tr>
+      </table>
+      <div class="section-title">Billing</div>
+      <table class="invoice-table">
+        <tr><th>Package</th><th>Extra Hr ₹</th><th>Extra KM ₹</th><th>Toll ₹</th><th>Parking ₹</th><th>Total ₹</th></tr>
+        <tr><td>Rs ${t.pkg}</td><td>Rs ${t.hrCost}</td><td>Rs ${t.kmCost}</td><td>Rs ${t.toll}</td><td>Rs ${t.park}</td><td><strong>Rs ${t.total}</strong></td></tr>
+      </table>
+      <div class="section-title">Note</div>
+      <div>${t.note || "-"}</div>
+    </div>`;
+  });
+  let win = window.open('', '', 'width=800,height=600');
+  win.document.write(`<html><head><title>Trip Invoices</title>
+    <style>
+    body { font-family: 'Poppins', sans-serif; color: #000; }
+    .invoice h2 { color: #4b2aad; border-bottom: 2px solid #000; margin-bottom: 10px; }
+    .invoice-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+    .invoice-table th, .invoice-table td { border: 1px solid #000; padding: 8px; text-align: left; }
+    .invoice-table th { background: #eee; }
+    .invoice { margin-bottom: 30px; page-break-after: always; padding: 15px; border: 2px solid #000; }
+    .section-title { font-weight: bold; margin-top: 15px; }
+    </style></head><body>${content}</body></html>`);
+  win.document.close();
+  win.print();
+}
+function exportToExcel() {
+  const trips = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (!trips.length) return alert("No trips to export.");
+  const data = trips.map(t => ({
+    "Trip ID": t.id,
+    "Date": formatDate(t.date),
+    "Customer Name": t.cust,
+    "Customer Number": t.custNum,
+    "Driver Name": t.driver,
+    "Driver Number": t.driverNum,
+    "Vehicle Model": t.model,
+    "Vehicle Number": t.no,
+    "Start Time": to12Hr(t.start),
+    "End Time": to12Hr(t.end),
+    "Duration (hrs)": t.duration,
+    "Extra Hours": t.extraHr,
+    "Start KM": t.startKM,
+    "End KM": t.endKM,
+    "Total KM": t.totalKM,
+    "Extra KM": t.extraKM,
+    "Package ₹": t.pkg,
+    "Extra Hr ₹": t.hrCost,
+    "Extra KM ₹": t.kmCost,
+    "Toll ₹": t.toll,
+    "Parking ₹": t.park,
+    "Total ₹": t.total,
+    "Note": t.note || "-"
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, "NST Trips");
+  XLSX.writeFile(wb, "NST_Trip_Records.xlsx");
+}
+tripId.value = genId();
+</script>
+</body>
+</html>
