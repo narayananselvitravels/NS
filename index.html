@@ -1,438 +1,438 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaxiEase - Booking Management</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        :root {
-            --primary: #3b82f6;
-            --secondary: #1e40af;
-            --accent: #f59e0b;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-        }
-        
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-        }
-        
-        .driver-available {
-            background-color: #d1fae5;
-        }
-        
-        .driver-busy {
-            background-color: #fee2e2;
-        }
-        
-        .booking-pending {
-            border-left: 4px solid #f59e0b;
-        }
-        
-        .booking-confirmed {
-            border-left: 4px solid #10b981;
-        }
-        
-        .booking-completed {
-            border-left: 4px solid #3b82f6;
-        }
-        
-        .booking-cancelled {
-            border-left: 4px solid #ef4444;
-        }
-        
-        #map {
-            height: 400px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        
-        @media (max-width: 768px) {
-            #map {
-                height: 300px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NST Trip Sheet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: 'Poppins', sans-serif; margin: 0 auto; padding: 20px; max-width: 800px; background: #f4f6f9; }
+    label { font-weight: bold; margin-top: 10px; display: block; }
+    input, select, textarea, button {
+      width: 100%; padding: 10px; margin: 5px 0 15px 0;
+      border: 1px solid #ccc; border-radius: 5px; font-size: 16px;
+    }
+    button { background: #4b2aad; color: white; border: none; cursor: pointer; }
+    button:hover { background: #341b8b; }
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .trip-card { background: white; border: 1px solid #ccc; border-radius: 10px; padding: 15px; margin-bottom: 10px; }
+    .trip-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .popup, .ratePopup {
+      display: none; position: fixed; top: 5%; left: 50%; transform: translateX(-50%);
+      width: 95%; max-width: 800px; max-height: 90vh; overflow-y: auto;
+      background: white; padding: 20px; border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3); z-index: 1000;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #4b2aad; color: white; }
+    #printContent { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      #printContent, #printContent * { visibility: visible; }
+      #printContent { position: absolute; top: 0; left: 0; width: 100%; }
+    }
+    .invoice { padding: 20px; border: 2px solid #000; margin-bottom: 30px; background: white; page-break-after: always; }
+    .invoice h2 { color: #4b2aad; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; font-size: 24px; }
+    .invoice-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 16px; }
+    .invoice-table th, .invoice-table td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+    .invoice-table th { background: #f0f0f0; }
+    .section-title { font-weight: bold; margin-top: 20px; color: #333; }
+  </style>
 </head>
-<body class="min-h-screen bg-gray-100">
-    <!-- Header -->
-    <header class="bg-indigo-900 text-white shadow-lg">
-        <div class="container mx-auto px-4 py-4">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-2">
-                    <img src="https://placehold.co/40x40" alt="TaxiEase logo - blue taxi icon with yellow circle background" class="rounded-full">
-                    <h1 class="text-2xl font-bold">TaxiEase</h1>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <div class="relative">
-                        <button class="p-2 rounded-full hover:bg-indigo-800">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                            </svg>
-                            <span class="absolute top-0 right-0 bg-red-500 text-white rounded-full h-4 w-4 flex items-center justify-center text-xs">3</span>
-                        </button>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <img src="https://placehold.co/40x40" alt="Profile picture of admin user - professional headshot in business attire" class="rounded-full">
-                        <span>Admin</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </header>
+<body>
+<h2>📝 NST Trip Sheet</h2>
+<div id="mainForm">
+  <label>Trip ID</label><input id="tripId" readonly>
+  <label>Date</label><input type="date" id="tripDate">
+  <label>Customer Name</label><input id="custName">
+  <label>Customer Number</label><input id="custNumber">
+  <label>Driver Name</label><input id="driverName">
+  <label>Driver Number</label><input id="driverNumber">
+  <label>Vehicle Model</label>
+  <select id="vehicleModel" onchange="sync(true)">
+    <option value="">-- Select --</option>
+    <option>Innova Crysta</option>
+    <option>Innova Hycross</option>
+    <option>Force Urbania</option>
+  </select>
+  <label>Vehicle Number</label>
+  <select id="vehicleNo" onchange="sync(false)">
+    <option value="">-- Select --</option>
+    <option>PY05N0505</option>
+    <option>PY01DB1007</option>
+    <option>TN14AP2084</option>
+  </select>
+  <label>Start Time</label><input type="time" id="startTime" onchange="recalc()">
+  <label>End Time</label><input type="time" id="endTime" onchange="recalc()">
+  <label>Duration (hrs)</label><input id="duration" readonly>
+  <label>Extra Hours</label><input id="extraHours" readonly>
+  <label>Start KM</label><input type="number" id="startKM" onchange="recalc()">
+  <label>End KM</label><input type="number" id="endKM" onchange="recalc()">
+  <label>Total KM</label><input id="totalKM" readonly>
+  <label>Extra KM</label><input id="extraKM" readonly>
+  <label>Package ₹</label><input id="packageCost" readonly>
+  <label>Extra Hr ₹</label><input id="extraHrCost" readonly>
+  <label>Extra KM ₹</label><input id="extraKmCost" readonly>
+  <label>Toll ₹</label><input type="number" id="toll" value="0" onchange="recalc()">
+  <label>Parking ₹</label><input type="number" id="parking" value="0" onchange="recalc()">
+  <label>Total ₹</label><input id="totalCost" readonly>
+  <label>Note</label><textarea id="note" rows="3" placeholder="Enter notes..."></textarea>
+  <input type="hidden" id="eHr">
+  <input type="hidden" id="eKm">
+  <input type="hidden" id="freeKm">
 
-    <!-- Main Content -->
-    <main class="container mx-auto px-4 py-6">
-        <div class="flex flex-col lg:flex-row gap-6">
-            <!-- Sidebar -->
-            <aside class="lg:w-64 bg-white rounded-lg shadow-md p-4">
-                <nav>
-                    <ul class="space-y-2">
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg bg-blue-100 text-blue-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                                </svg>
-                                <span>Dashboard</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>Bookings</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
-                                <span>Drivers</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                </svg>
-                                <span>Transactions</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                </svg>
-                                <span>Reports</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                                </svg>
-                                <span>Settings</span>
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-            </aside>
+  <div class="btn-group">
+    <button onclick="saveTrip()">💾 Save</button>
+    <button onclick="showTrips()">📑 View All</button>
+    <button onclick="shareLast()">📤 WhatsApp</button>
+    <button onclick="exportPDF()">📄 Export PDF</button>
+    <button onclick="exportToExcel()">📊 Export Excel</button>
+  </div>
+  <button style="margin-top:15px;" onclick="openRates()">✏️ Edit Rates</button>
+</div>
 
-            <!-- Main Dashboard -->
-            <div class="flex-1">
-                <!-- Dashboard Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div class="dashboard-card bg-white rounded-lg shadow-md p-6 transition-transform duration-300">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500">Total Bookings</p>
-                                <h3 class="text-3xl font-bold">1,248</h3>
-                                <p class="text-sm text-green-500">+12.5% from last month</p>
-                            </div>
-                            <div class="bg-blue-100 p-3 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dashboard-card bg-white rounded-lg shadow-md p-6 transition-transform duration-300">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500">Active Drivers</p>
-                                <h3 class="text-3xl font-bold">42</h3>
-                                <p class="text-sm text-green-500">5 new this week</p>
-                            </div>
-                            <div class="bg-green-100 p-3 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dashboard-card bg-white rounded-lg shadow-md p-6 transition-transform duration-300">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500">Revenue</p>
-                                <h3 class="text-3xl font-bold">$24,580</h3>
-                                <p class="text-sm text-green-500">+18% from last month</p>
-                            </div>
-                            <div class="bg-purple-100 p-3 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dashboard-card bg-white rounded-lg shadow-md p-6 transition-transform duration-300">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500">Pending Requests</p>
-                                <h3 class="text-3xl font-bold">8</h3>
-                                <p class="text-sm text-red-500">5 urgent</p>
-                            </div>
-                            <div class="bg-red-100 p-3 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+<!-- Trip List Popup -->
+<div class="popup" id="tripPopup">
+  <h3>📋 All Trips</h3>
+  <div id="tripList"></div>
+  <button onclick="tripPopup.style.display='none'">Close</button>
+</div>
 
-                <!-- Map and Booking Form -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                    <!-- Map -->
-                    <div class="lg:col-span-2">
-                        <div class="bg-white rounded-lg shadow-md p-4">
-                            <h2 class="text-xl font-semibold mb-4">Current Bookings</h2>
-                            <div id="map">
-                                <!-- Map will be loaded here -->
-                                <img src="https://placehold.co/800x400" alt="Interactive map showing current taxi locations and pickups - blue taxi icons moving along city streets" class="w-full h-full object-cover rounded-lg">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Quick Booking -->
-                    <div class="bg-white rounded-lg shadow-md p-6">
-                        <h2 class="text-xl font-semibold mb-4">Create New Booking</h2>
-                        <form id="bookingForm" class="space-y-4">
-                            <div>
-                                <label for="passengerName" class="block text-sm font-medium text-gray-700">Passenger Name</label>
-                                <input type="text" id="passengerName" name="passengerName" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label for="pickupLocation" class="block text-sm font-medium text-gray-700">Pickup Location</label>
-                                <input type="text" id="pickupLocation" name="pickupLocation" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label for="dropoffLocation" class="block text-sm font-medium text-gray-700">Dropoff Location</label>
-                                <input type="text" id="dropoffLocation" name="dropoffLocation" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label for="vehicleType" class="block text-sm font-medium text-gray-700">Vehicle Type</label>
-                                <select id="vehicleType" name="vehicleType" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                    <option>Standard</option>
-                                    <option>Premium</option>
-                                    <option>SUV</option>
-                                    <option>Van</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="bookingTime" class="block text-sm font-medium text-gray-700">Booking Time</label>
-                                <input type="datetime-local" id="bookingTime" name="bookingTime" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label for="paymentMethod" class="block text-sm font-medium text-gray-700">Payment Method</label>
-                                <select id="paymentMethod" name="paymentMethod" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                    <option>Cash</option>
-                                    <option>Credit Card</option>
-                                    <option>Mobile Payment</option>
-                                    <option>Prepaid</option>
-                                </select>
-                            </div>
-                            <div class="flex space-x-4">
-                                <button type="submit" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Create Booking</button>
-                                <button type="reset" class="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">Clear</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+<!-- Rate Edit Popup -->
+<div class="ratePopup" id="ratePopup">
+  <h3>✏️ Edit Vehicle Rates</h3>
+  <table>
+    <thead><tr><th>Model</th><th>Package ₹</th><th>Extra Hr ₹</th><th>Extra KM ₹</th><th>Free KM</th></tr></thead>
+    <tbody id="rateRows"></tbody>
+  </table>
+  <button onclick="saveRates()">Save Rates</button>
+  <button onclick="ratePopup.style.display='none'">Cancel</button>
+</div>
 
-                <!-- Recent Bookings -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold">Recent Bookings</h2>
-                        <button class="text-blue-600 hover:text-blue-800">View All</button>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booking ID</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Passenger</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pickup</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dropoff</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr class="booking-confirmed">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#BK5321</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">John Smith</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Airport Terminal 2</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Downtown Hotel</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Today, 09:30</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Confirmed</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <button class="text-blue-600 hover:text-blue-900 mr-3">Track</button>
-                                        <button class="text-gray-600 hover:text-gray-900">Details</button>
-                                    </td>
-                                </tr>
-                                <tr class="booking-completed">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#BK5320</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Sarah Johnson</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">City Mall</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Elm Street Apartments</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Today, 08:15</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Completed</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <button class="text-blue-600 hover:text-blue-900 mr-3">Receipt</button>
-                                        <button class="text-gray-600 hover:text-gray-900">Details</button>
-                                    </td>
-                                </tr>
-                                <tr class="booking-pending">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#BK5319</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Michael Brown</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Train Station</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Business District</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Today, 10:45</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <button class="text-blue-600 hover:text-blue-900 mr-3">Assign</button>
-                                        <button class="text-red-600 hover:text-red-900">Cancel</button>
-                                    </td>
-                                </tr>
-                                <tr class="booking-cancelled">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#BK5318</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Emma Wilson</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">University Campus</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Central Park</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Yesterday, 17:30</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Cancelled</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <button class="text-blue-600 hover:text-blue-900 mr-3">Reschedule</button>
-                                        <button class="text-gray-600 hover:text-gray-900">Details</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+<!-- For print -->
+<div id="printContent"></div>
 
-                <!-- Driver Availability -->
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h2 class="text-xl font-semibold mb-4">Driver Availability</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="driver-available p-4 rounded-lg flex items-center space-x-3">
-                            <img src="https://placehold.co/50x50" alt="Profile picture of driver Robert Chen - smiling middle-aged Asian man" class="rounded-full">
-                            <div>
-                                <h4 class="font-medium">Robert Chen</h4>
-                                <p class="text-sm text-gray-500">2 minutes away</p>
-                            </div>
-                        </div>
-                        <div class="driver-busy p-4 rounded-lg flex items-center space-x-3">
-                            <img src="https://placehold.co/50x50" alt="Profile picture of driver Maria Garcia - young Hispanic woman with curly hair" class="rounded-full">
-                            <div>
-                                <h4 class="font-medium">Maria Garcia</h4>
-                                <p class="text-sm text-gray-500">On trip (ETA 15 min)</p>
-                            </div>
-                        </div>
-                        <div class="driver-available p-4 rounded-lg flex items-center space-x-3">
-                            <img src="https://placehold.co/50x50" alt="Profile picture of driver David Johnson - older African American man with glasses" class="rounded-full">
-                            <div>
-                                <h4 class="font-medium">David Johnson</h4>
-                                <p class="text-sm text-gray-500">5 minutes away</p>
-                            </div>
-                        </div>
-                        <div class="driver-busy p-4 rounded-lg flex items-center space-x-3">
-                            <img src="https://placehold.co/50x50" alt="Profile picture of driver Priya Patel - young South Asian woman smiling" class="rounded-full">
-                            <div>
-                                <h4 class="font-medium">Priya Patel</h4>
-                                <p class="text-sm text-gray-500">On break (10 min)</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- JavaScript for Booking Form -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Booking form submission
-            const bookingForm = document.getElementById('bookingForm');
-            
-            if (bookingForm) {
-                bookingForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    
-                    // Get form values
-                    const passengerName = document.getElementById('passengerName').value;
-                    const pickupLocation = document.getElementById('pickupLocation').value;
-                    const dropoffLocation = document.getElementById('dropoffLocation').value;
-                    const vehicleType = document.getElementById('vehicleType').value;
-                    const bookingTime = document.getElementById('bookingTime').value;
-                    const paymentMethod = document.getElementById('paymentMethod').value;
-                    
-                    // In a real app, you would send this data to a server
-                    console.log('Booking submitted:', {
-                        passengerName,
-                        pickupLocation,
-                        dropoffLocation,
-                        vehicleType,
-                        bookingTime,
-                        paymentMethod
-                    });
-                    
-                    // Show success message
-                    alert(`Booking created for ${passengerName} from ${pickupLocation} to ${dropoffLocation}`);
-                    
-                    // Reset form
-                    bookingForm.reset();
-                });
-            }
-            
-            // Simulated map initialization
-            // In a real app, you would use Google Maps or Mapbox API
-            console.log('Map would be initialized here');
-            
-            // Handle notification click
-            const notificationBtn = document.querySelector('.relative button');
-            if (notificationBtn) {
-                notificationBtn.addEventListener('click', function() {
-                    alert('Notifications would be displayed here');
-                });
-            }
-        });
-    </script>
+<!-- JavaScript -->
+<script>
+// ... JS starts here (continues in next message due to length)
+</script>
 </body>
 </html>
+<script>
+const RKEY = 'nst-rates', TKEY = 'nst-trips';
+let editingId = null;
+
+let rates = JSON.parse(localStorage.getItem(RKEY)) || {
+  "Innova Crysta": { pkg: 7500, hr: 1000, km: 20, free: 80, no: "PY05N0505" },
+  "Innova Hycross": { pkg: 8500, hr: 1200, km: 24, free: 60, no: "PY01DB1007" },
+  "Force Urbania": { pkg: 9500, hr: 1500, km: 26, free: 70, no: "TN14AP2084" }
+};
+
+function sync(fromModel) {
+  if (fromModel) {
+    let model = vehicleModel.value;
+    if (rates[model]) {
+      vehicleNo.value = rates[model].no;
+      packageCost.value = rates[model].pkg;
+      eHr.value = rates[model].hr;
+      eKm.value = rates[model].km;
+      freeKm.value = rates[model].free;
+    }
+  } else {
+    let no = vehicleNo.value;
+    for (let model in rates) {
+      if (rates[model].no === no) {
+        vehicleModel.value = model;
+        sync(true);
+        break;
+      }
+    }
+  }
+  recalc();
+}
+
+function to12Hr(timeStr) {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(":");
+  const d = new Date();
+  d.setHours(h, m);
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: 'Asia/Kolkata'
+  }).format(new Date(dateStr));
+}
+
+function recalc() {
+  if (startTime.value && endTime.value) {
+    let s = new Date(`1970-01-01T${startTime.value}`);
+    let e = new Date(`1970-01-01T${endTime.value}`);
+    let diff = (e - s) / 3600000;
+    if (diff < 0) diff += 24;
+    let hrs = Math.ceil(diff);
+    duration.value = hrs;
+    extraHours.value = hrs > 8 ? hrs - 8 : 0;
+  }
+
+  let totKm = endKM.value - startKM.value;
+  totalKM.value = totKm;
+  extraKM.value = totKm > freeKm.value ? totKm - freeKm.value : 0;
+
+  extraHrCost.value = (extraHours.value || 0) * eHr.value;
+  extraKmCost.value = (extraKM.value || 0) * eKm.value;
+  totalCost.value = (+packageCost.value || 0) + (+extraHrCost.value || 0) + (+extraKmCost.value || 0) + (+toll.value || 0) + (+parking.value || 0);
+}
+
+function genId() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  for (let i = 1; i <= 999; i++) {
+    let id = "#NST" + String(i).padStart(3, '0');
+    if (!arr.find(t => t.id === id)) return id;
+  }
+  return "#NST999";
+}
+
+function saveTrip() {
+  let trip = {
+    id: tripId.value || genId(),
+    date: tripDate.value,
+    note: note.value,
+    cust: custName.value,
+    custNum: custNumber.value,
+    driver: driverName.value,
+    driverNum: driverNumber.value,
+    model: vehicleModel.value,
+    no: vehicleNo.value,
+    start: startTime.value,
+    end: endTime.value,
+    duration: duration.value,
+    extraHr: extraHours.value,
+    startKM: startKM.value,
+    endKM: endKM.value,
+    totalKM: totalKM.value,
+    extraKM: extraKM.value,
+    pkg: packageCost.value,
+    hrCost: extraHrCost.value,
+    kmCost: extraKmCost.value,
+    toll: toll.value,
+    park: parking.value,
+    total: totalCost.value
+  };
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (editingId) {
+    let i = arr.findIndex(t => t.id === editingId);
+    if (i >= 0) arr[i] = trip;
+    editingId = null;
+  } else {
+    arr.push(trip);
+  }
+  localStorage.setItem(TKEY, JSON.stringify(arr));
+  clearForm();
+}
+
+function clearForm() {
+  document.querySelectorAll('#mainForm input, #mainForm select, #mainForm textarea').forEach(el => el.value = '');
+  tripId.value = genId();
+}
+
+function showTrips() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  tripList.innerHTML = arr.map(t => `
+    <div class="trip-card">
+      <b>${t.id}</b> (${formatDate(t.date)})<br>
+      ${t.model} - ${t.no}<br>
+      ${to12Hr(t.start)} → ${to12Hr(t.end)} (${t.duration}h)<br>
+      Extra Hr: ${t.extraHr} | Extra KM: ${t.extraKM}<br>
+      Toll: ₹${t.toll} | Parking: ₹${t.park}<br>
+      <b>Total: ₹${t.total}</b>
+      <div class="trip-actions">
+        <button onclick="editTrip('${t.id}')">✏️ Edit</button>
+        <button onclick="deleteTrip('${t.id}')">❌ Delete</button>
+        <button onclick="shareTrip('${t.id}')">📤 Share</button>
+      </div>
+    </div>
+  `).join('') || 'No trips yet';
+  tripPopup.style.display = 'block';
+}
+
+function editTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let t = arr.find(x => x.id === id);
+  if (!t) return;
+  editingId = id;
+  tripId.value = t.id;
+  tripDate.value = t.date;
+  note.value = t.note || "";
+  custName.value = t.cust;
+  custNumber.value = t.custNum;
+  driverName.value = t.driver;
+  driverNumber.value = t.driverNum;
+  vehicleModel.value = t.model;
+  vehicleNo.value = t.no;
+  startTime.value = t.start;
+  endTime.value = t.end;
+  startKM.value = t.startKM;
+  endKM.value = t.endKM;
+  toll.value = t.toll;
+  parking.value = t.park;
+  sync(true);
+  recalc();
+  tripPopup.style.display = 'none';
+}
+
+function deleteTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  arr = arr.filter(t => t.id !== id);
+  localStorage.setItem(TKEY, JSON.stringify(arr));
+  showTrips();
+}
+
+function shareTrip(id) {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let t = arr.find(x => x.id === id);
+  if (!t) return;
+  let msg = `📋 *TRIP SUMMARY*\n*TRIP ID:* ${t.id}\n*DATE:* ${formatDate(t.date)}
+
+👤 *CUSTOMER INFO*
+*• Name:* ${t.cust}
+*• Number:* ${t.custNum}
+
+👨‍✈️ *DRIVER INFO*
+*• Name:* ${t.driver}
+*• Number:* ${t.driverNum}
+
+🚘 *VEHICLE INFO*
+*• Model:* ${t.model}
+*• Vehicle No:* ${t.no}
+
+🕒 *TIME & DISTANCE*
+*• Start Time:* ${to12Hr(t.start)}
+*• End Time:* ${to12Hr(t.end)}
+*• Duration:* ${t.duration} hrs
+*• Extra Hrs:* ${t.extraHr}
+*• Total KM:* ${t.totalKM} km
+*• Extra KM:* ${t.extraKM} km
+
+💰 *BILLING*
+*• Package:* ₹${t.pkg}
+*• Extra Hrs:* ₹${t.hrCost}
+*• Extra KM:* ₹${t.kmCost}
+*• Toll:* ₹${t.toll}
+*• Parking:* ₹${t.park}
+*• Total:* ₹${t.total}
+
+📝 *Note:* ${t.note || "-"}`;
+  window.open("https://wa.me/?text=" + encodeURIComponent(msg));
+}
+
+function shareLast() {
+  let arr = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (arr.length) shareTrip(arr[arr.length - 1].id);
+}
+
+function openRates() {
+  rateRows.innerHTML = '';
+  for (let m in rates) {
+    let r = rates[m];
+    rateRows.innerHTML += `
+      <tr>
+        <td>${m}</td>
+        <td><input type="number" value="${r.pkg}" onchange="rates['${m}'].pkg=this.value"></td>
+        <td><input type="number" value="${r.hr}" onchange="rates['${m}'].hr=this.value"></td>
+        <td><input type="number" value="${r.km}" onchange="rates['${m}'].km=this.value"></td>
+        <td><input type="number" value="${r.free}" onchange="rates['${m}'].free=this.value"></td>
+      </tr>`;
+  }
+  ratePopup.style.display = 'block';
+}
+
+function saveRates() {
+  localStorage.setItem(RKEY, JSON.stringify(rates));
+  ratePopup.style.display = 'none';
+  sync(true);
+}
+
+function exportPDF() {
+  const trips = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  let content = '';
+  trips.forEach(t => {
+    content += `
+    <div class="invoice">
+      <h2>NST Travels – Trip Invoice</h2>
+      <div><strong>Trip ID:</strong> ${t.id}</div>
+      <div><strong>Date:</strong> ${formatDate(t.date)}</div>
+      <div class="section-title">Customer Info</div>
+      <div>Name: ${t.cust} | Number: ${t.custNum}</div>
+      <div class="section-title">Driver Info</div>
+      <div>Name: ${t.driver} | Number: ${t.driverNum}</div>
+      <div class="section-title">Vehicle Info</div>
+      <div>Model: ${t.model} | Number: ${t.no}</div>
+      <div class="section-title">Time & Distance</div>
+      <table class="invoice-table">
+        <tr><th>Start</th><th>End</th><th>Duration</th><th>Extra Hr</th><th>Total KM</th><th>Extra KM</th></tr>
+        <tr><td>${to12Hr(t.start)}</td><td>${to12Hr(t.end)}</td><td>${t.duration}</td><td>${t.extraHr}</td><td>${t.totalKM}</td><td>${t.extraKM}</td></tr>
+      </table>
+      <div class="section-title">Billing</div>
+      <table class="invoice-table">
+        <tr><th>Package</th><th>Extra Hr ₹</th><th>Extra KM ₹</th><th>Toll ₹</th><th>Parking ₹</th><th>Total ₹</th></tr>
+        <tr><td>₹${t.pkg}</td><td>₹${t.hrCost}</td><td>₹${t.kmCost}</td><td>₹${t.toll}</td><td>₹${t.park}</td><td><strong>₹${t.total}</strong></td></tr>
+      </table>
+      <div class="section-title">Note</div>
+      <div>${t.note || "-"}</div>
+    </div>`;
+  });
+
+  let win = window.open('', '', 'width=800,height=600');
+  win.document.write(`<html><head><title>Trip Invoices</title><style>
+    body { font-family: 'Poppins', sans-serif; background: white; color: #000; }
+    .invoice h2 { color: #4b2aad; border-bottom: 2px solid #000; margin-bottom: 10px; }
+    .invoice-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 16px; }
+    .invoice-table th, .invoice-table td { border: 1px solid #000; padding: 8px; text-align: left; }
+    .invoice-table th { background: #f0f0f0; }
+    .invoice { margin-bottom: 30px; page-break-after: always; padding: 15px; border: 2px solid #000; }
+    .section-title { font-weight: bold; margin-top: 15px; }
+  </style></head><body>${content}</body></html>`);
+  win.document.close();
+  win.print();
+}
+
+function exportToExcel() {
+  const data = JSON.parse(localStorage.getItem(TKEY) || '[]');
+  if (!data.length) return alert("No trips to export!");
+  const rows = data.map(t => ({
+    "Trip ID": t.id,
+    "Date": formatDate(t.date),
+    "Customer": t.cust,
+    "Customer No": t.custNum,
+    "Driver": t.driver,
+    "Driver No": t.driverNum,
+    "Vehicle Model": t.model,
+    "Vehicle No": t.no,
+    "Start Time": to12Hr(t.start),
+    "End Time": to12Hr(t.end),
+    "Duration (hrs)": t.duration,
+    "Extra Hrs": t.extraHr,
+    "Total KM": t.totalKM,
+    "Extra KM": t.extraKM,
+    "Package ₹": t.pkg,
+    "Extra Hr ₹": t.hrCost,
+    "Extra KM ₹": t.kmCost,
+    "Toll ₹": t.toll,
+    "Parking ₹": t.park,
+    "Total ₹": t.total,
+    "Note": t.note
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, "Trips");
+  XLSX.writeFile(wb, "NST_Trips.xlsx");
+}
+
+tripId.value = genId();
+</script>
